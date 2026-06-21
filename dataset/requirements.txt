@@ -1,0 +1,4 @@
+elasticsearch==9.4.1
+python-dotenv==1.2.2
+faker==40.23.0
+pytest==8.3.5
