@@ -1,0 +1,36 @@
+services:
+  mock-api:
+    build: ./infra/mock_Api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.0
+    user: root
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./infra/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./infra/log_test:/logs-watched:ro          
+      - filebeat-output:/output
+    restart: unless-stopped
+    depends_on:
+      - mock-api
+
+  forwarder:
+    build: ./infra/forwarder
+    environment:
+      - API_URL=${API_URL}
+      - API_KEY=${API_KEY}
+      - BATCH_SIZE=${BATCH_SIZE}
+      - POLL_INTERVAL=${POLL_INTERVAL}
+    volumes:
+      - filebeat-output:/output:ro  
+      - forwarder-state:/state
+    restart: unless-stopped
+    depends_on:
+      - filebeat
+      - mock-api
+
+volumes:
+  filebeat-output:
+  forwarder-state:

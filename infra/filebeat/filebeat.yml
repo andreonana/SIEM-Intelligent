@@ -1,0 +1,23 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /logs-watched/*.log
+    json.keys_under_root: false
+    encoding: utf-8
+
+output.file:
+  path: /output
+  filename: beats-output
+  rotate_every_kb: 10240
+  number_of_files: 5
+
+logging.level: info
+logging.to_files: false
+
+# Fix permissions Windows + Docker
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+strict.perms: false
