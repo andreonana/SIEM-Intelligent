@@ -58,3 +58,4 @@ uploads/
 # Secrets
 secrets/
 *.secret
+infra/certs/
