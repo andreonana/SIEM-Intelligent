@@ -115,7 +115,7 @@ async def ingest_logs_bulk(raw_logs: list[RawLogIngest], es_client: AsyncElastic
     """
     successful, errors = await ingest_bulk_logs(raw_logs, es_client)
 
-    return BulkkIngestResult(
+    return BulkIngestResult(
         total_received=len(raw_logs),
         total_inserted=len(successful),
         total_failed=len(errors),
