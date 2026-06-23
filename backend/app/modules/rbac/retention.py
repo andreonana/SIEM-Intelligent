@@ -11,20 +11,25 @@ from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
 from fastapi import APIRouter, Depends
 from apscheduler.schedulers.background import BackgroundScheduler
-from rbac import require_role
+from app.modules.rbac.roles import require_role
 
 load_dotenv()
 
 # ── Setup ─────────────────────────────────────────────────
-router = APIRouter()  # Backend dev adds this to main.py
+router = APIRouter()
+
+# ── Elasticsearch connection over HTTPS ───────────────────
+ES_HOST = os.getenv("ES_HOST", "localhost")
+ES_PORT = os.getenv("ES_PORT", "9200")
+ES_USE_SSL = os.getenv("ES_USE_SSL", "false").lower() == "true"
 
 es = Elasticsearch(
-    host=os.getenv("ES_HOST", "localhost"),
-    port=int(os.getenv("ES_PORT", 9200)),
+    f"{'https' if ES_USE_SSL else 'http'}://{ES_HOST}:{ES_PORT}",
+    verify_certs=False  # False for self-signed certificate
 )
 
-INDEX_LOGS  = os.getenv("ES_INDEX_LOGS", "siem-logs")
-INDEX_AUDIT = os.getenv("ES_INDEX_AUDIT", "siem-audit")
+INDEX_LOGS     = os.getenv("ES_INDEX_LOGS",  "siem-logs")
+INDEX_AUDIT    = os.getenv("ES_INDEX_AUDIT", "siem-audit")
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "30"))
 
 # ── Core Cleanup Function ─────────────────────────────────
@@ -32,16 +37,13 @@ def run_retention_cleanup() -> dict:
     """
     Deletes all logs older than RETENTION_DAYS from Elasticsearch.
     Also writes an entry to the audit log so there's a record.
-    
     Returns a summary dict with how many logs were deleted.
     """
     cutoff_date = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
-    
+
     print(f"[Retention] Running cleanup. Deleting logs before {cutoff_date.isoformat()}")
-    
-    # Elasticsearch Delete by Query
-    # This deletes every document in siem-logs
-    # where the timestamp is older than our cutoff
+
+    # Delete old logs from Elasticsearch
     response = es.delete_by_query(
         index=INDEX_LOGS,
         body={
@@ -54,11 +56,11 @@ def run_retention_cleanup() -> dict:
             }
         }
     )
-    
+
     deleted_count = response.get("deleted", 0)
     print(f"[Retention] Deleted {deleted_count} documents.")
-    
-    # Write to audit log — this is the security trail
+
+    # Write to audit log — security trail
     es.index(
         index=INDEX_AUDIT,
         document={
@@ -66,13 +68,13 @@ def run_retention_cleanup() -> dict:
             "target":    f"{INDEX_LOGS} — logs older than {RETENTION_DAYS} days",
             "result":    f"deleted {deleted_count} documents",
             "timestamp": datetime.utcnow().isoformat(),
-            "username":  "system",  # Automated action, not a user
+            "username":  "system",
         }
     )
-    
+
     return {
-        "deleted": deleted_count,
-        "cutoff": cutoff_date.isoformat(),
+        "deleted":        deleted_count,
+        "cutoff":         cutoff_date.isoformat(),
         "retention_days": RETENTION_DAYS
     }
 
@@ -80,9 +82,9 @@ def run_retention_cleanup() -> dict:
 def start_retention_scheduler():
     """
     Starts a background job that runs cleanup every day at 2 AM.
-    
-    The backend dev calls this once in main.py:
-        from retention import start_retention_scheduler
+
+    Backend dev adds this to main.py:
+        from app.modules.rbac.retention import start_retention_scheduler
         start_retention_scheduler()
     """
     scheduler = BackgroundScheduler()
@@ -97,7 +99,6 @@ def start_retention_scheduler():
     print("[Retention] Scheduler started — cleanup runs daily at 02:00")
 
 # ── Manual Trigger Endpoint ───────────────────────────────
-# This is for the demo: run cleanup on demand without waiting 24h
 @router.post(
     "/api/admin/retention/run",
     summary="Manually trigger log retention cleanup",
@@ -112,7 +113,7 @@ def trigger_retention_manually(
     """
     result = run_retention_cleanup()
     return {
-        "status": "cleanup complete",
+        "status":       "cleanup complete",
         "triggered_by": user["username"],
         **result
     }
