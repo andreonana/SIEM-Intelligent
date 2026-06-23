@@ -8,7 +8,7 @@
 #        ci-dessous représente exactement ce que l'infra nous envoie
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, Field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class RawLogIngest(BaseModel):
     """
@@ -39,7 +39,7 @@ class RawLogIngest(BaseModel):
     #   Ne décrit pas le contenu du log lui-même, mais son canal source afin de choisir le bon analyseur syntaxique
     #    (parser) dans le module de normalisation, sans avoir à deviner le format uniquement depuis le contenu du message.
 
-    @Field_validator("source")
+    @field_validator("source")
     @classmethod
     def source_must_be_known(cls, value:str) -> str:
         """
@@ -73,6 +73,7 @@ class NormalizedLogOut(BaseModel):
     log_type: str
     severity: str
     raw_message: str
+    tags: list[str] = Field(default_factory=list)
 
 class BulkIngestResult(BaseModel):
     """

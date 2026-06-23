@@ -58,3 +58,6 @@ uploads/
 # Secrets
 secrets/
 *.secret
+
+#   Backend
+backend/*.env

@@ -12,7 +12,7 @@
 #    classe respectant ce contrat, sans modifier le code existant.
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 @dataclass
@@ -24,13 +24,17 @@ class ParsedLog:
       On sépare volontairement le rôle "lire un format" de celui "classifier le contenu":
       Un parser ne sait que transformer du texte brut en champs structurés, sans prise de
        décision de classification métier.
+    Le champ "tags" contient les étiquettes éventuellement déjà présentes dans la source brute (comme celles 
+     ajoutées par un agent Filebat, envoyant un JSON enrichi.).
+    Il est colontairement initialisé à une liste vide par défaut, car les autres formats bruts (RFC3164) ne 
+     contiennent jamais ce champ. Seul le format JSON direct peut le fournir.
     """
 
     timestamp: datetime
     source_ip: str
     host: str
     raw_message: str
-    tags: list[str]
+    tags: list[str] = field(default_factory=list)
 
 class LogParser(ABC):
     """

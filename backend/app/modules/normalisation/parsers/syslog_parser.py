@@ -70,7 +70,7 @@ class SyslogRFC3164Parser(LogParser):
         timestamp_str = (f"{current_year} {groups['month']} {groups['day']} {groups['time']}")
 
         #   strptime avec le motif "%b" reconnait les abréviations de mois anglaises, cohérent avec le format Syslog standard
-        timestamp = datetime.strptime(timestamp_str, "%Y %b %d %H:%M%S")
+        timestamp = datetime.strptime(timestamp_str, "%Y %b %d %H:%M:%S")
 
         #   strptime() produit toujours un datetime "naïf" (sans fuseau horaire attaché),
         #    même en cas d'usage de l'heure UTC pour déduction de l'année.
@@ -89,6 +89,9 @@ class SyslogRFC3164Parser(LogParser):
             source_ip=source_ip,
             host=groups["hosts"],
             raw_message=raw_message,
+            tags=[],                        #   Le format RFC3164 ne contient jamais de champs "tags". Il n'existe que pour les logs arrivant déjà en JSON.
+                                            #    on fournit donc une liste vide ici, cohérent avec default_value de déclarée dans ParsedLog et nécessaire 
+                                            #    pour que la construction de cet objet n'échoue jamais à cause de son absence.
         )
         #   Message brute original conservé en entier (pas seulement la portion applicative), ce qui est nécessaire 
         #    pour la valeur probatoire et forensique des logs

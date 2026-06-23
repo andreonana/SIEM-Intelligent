@@ -10,15 +10,23 @@
 #   Le nom du module à indiquer à Uvicorn est "app.main", et l'objet FastAPI exposé dans ce fichier s'appelle "app"
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from backend.app.api.v1 import routers
+from dotenv import load_dotenv
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_SHARED_ENV_FILE = _PROJECT_ROOT / ".env"
+
+load_dotenv(dotenv_path=_SHARED_ENV_FILE)
+
+# from backend.app.api.v1 import routers
 from fastapi import FastAPI
 
-from app.api.v1.routers.logs import router as logs_routers
+from app.api.v1.routers.logs import router as logs_router
 from app.db.elasticsearch_client import close_es_client
 
 @asynccontextmanager
-async def lifespace(app: FastAPI):
+async def lifespan(app: FastAPI):
     """
     Gère les actions à exécuter au démarrage et à l'arrêt du serveur.
     Tout ce qui se trouve avant l'instruction "yield" s'exécute une seule fois, au démarrage du serveur, avant que la
@@ -36,11 +44,12 @@ async def lifespace(app: FastAPI):
 app = FastAPI(
     title="Smart SIEM API",
     version="0.1.0",
-    description="API d'ingestion, normalisation et corrélation de logs de sécurité"
+    description="API d'ingestion, normalisation et corrélation de logs de sécurité",
+    lifespan=lifespan,
 )
 
 #   Branchement du routeur de logs (endpoints d'ingestion) défini dans backend/app/api/v1/routers/logs.py
-app.include_router(logs_routers)
+app.include_router(logs_router)
 
 #   *** ENDPOINT LOGIN START    ***
 #
@@ -49,7 +58,7 @@ app.include_router(logs_routers)
 #   Le fichier auth.py gère le login, hachage de passwords et création de tokes JWT.
 #   Une fois le fichier reçu, il devra suivre le même schéma pour logs_router:
 #
-#   from auth import router as auth_router
+#   from app.modules.rbac.auth import router as auth_router
 #   app.include_router(auth_router)
 #
 #   Nom exact du routeur doit être update à la réception.
@@ -85,6 +94,9 @@ app.include_router(logs_routers)
 @app.get("/health")
 async def health_check():
     """
-    Endpoint de santé
+    Endpoint de santé demandé.
+    Il reste volontairement indépendant d'Elasticsearch; répond même si le cluster Elasticsearch est 
+     temporariement indisponible, ce qui permet à un sustème de supervision de distinguer "l'API tourne"
+     de "l'API et sa base de données tournent tous les deux".
     """
     return {"status": "ok"}
