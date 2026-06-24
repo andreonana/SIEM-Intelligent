@@ -62,9 +62,9 @@ def _build_client() -> AsyncElasticsearch:
     
     if ca_cert_path:
         client_kwargs["ca_certs"] = ca_cert_path
-        client_kwargs["verify_ccerts"] = True
+        client_kwargs["verify_certs"] = True
     else:
-        client_kwargs["verify_ccerts"] = False
+        client_kwargs["verify_certs"] = False
         print("[WARNING] ELASTIC_CA_CERT_PATH n'est pas configuré. "
               "La connexion à Elastisearch se fait donc sans vérification du certificat TLS.")
         

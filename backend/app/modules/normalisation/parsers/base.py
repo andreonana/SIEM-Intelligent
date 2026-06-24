@@ -54,7 +54,7 @@ class LogParser(ABC):
         ...
 
     @abstractmethod
-    def parse(sefl, raw_message: str) -> ParsedLog:
+    def parse(self, raw_message: str) -> ParsedLog:
         """
         Analyse un message brut et retourne les champs extraits sous forme structurée (ParseLog).
         Doit lever ValueErrour si le message ne correspond pas au format attendu par ce parser, 

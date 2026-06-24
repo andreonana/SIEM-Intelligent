@@ -30,7 +30,7 @@ from app.schemas.log import RawLogIngest
 #   Une valeur par défaut est fournie ("smart-siem-ligs") uniquement pour permettre de démarrer le développement local 
 #    avant que cette variacle ne soit officiellement communiquée. Dès que la variable d'environnement réelle est définie 
 #    dans .env, elle prend automatiquement le dessus sur cette valeur par défaut.
-LOGS_INDEX_NAME = os.getenv("ES_LOGS_INDEX_NAME", "smart-siem-logs")
+LOGS_INDEX_NAME = os.getenv("ES_LOGS_INDEX_NAME", "logs-siem")
 
 async def ingest_single_log(raw_log: RawLogIngest, es_client: AsyncElasticsearch) -> dict:
     """
@@ -85,7 +85,7 @@ async def ingest_single_log(raw_log: RawLogIngest, es_client: AsyncElasticsearch
     #   On reconstruit un dictionnaire propre, cohérent avec le schéma NormalizedLogOut attendu par l'API en injectant
     #    l'identifiant généré par Elasticsearch dans le champ "id".
     return {
-        "id": response["id"],
+        "id": response["_id"],
         "timestamp": normalized.timestamp,
         "source_ip": normalized.source_ip,
         "host": normalized.host,
@@ -125,4 +125,4 @@ async def ingest_bulk_logs(raw_logs: list[RawLogIngest], es_client: AsyncElastic
             #   On le distingue clairement d'une erreur de données. Ici, le problème vient de l'infra de stockage et non du log.
             error_messages.append(f"Log #{index}: erreur Elasticsearch - {exc}")
 
-        return successful_entries, error_messages
+    return successful_entries, error_messages

@@ -22,7 +22,7 @@ class RawLogIngest(BaseModel):
     #        plutôt que de perdre l'info sans le savoir.
     #       - str_strip_whitespace=True: retire automatiquement es espaces parasites en début et fin de chaînes,
     #        fréquents dans les logs Syslogs bruts.
-    model_config = ConfigDict(extra="forbid", str_strip_whitesapce=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     raw_message: str = Field(
         min_length=1,
@@ -64,7 +64,7 @@ class NormalizedLogOut(BaseModel):
 
     #   from_attributes=True permet à Pydantic de construire cette réponse directement depuis un dictionnaire 
     #    Python ou d'un objet ayant ces attributs, sans convertion manuelle.
-    model_config = ConfigDict(from_attribute=True)
+    model_config = ConfigDict(from_attributes=True)
 
     id: str
     timestamp: datetime
@@ -85,7 +85,7 @@ class BulkIngestResult(BaseModel):
 
     total_received: int
     total_inserted: int
-    total_ailed: int
+    total_failed: int
     errors: list[str] = Field(default_factory=list)
     #   default_factory=list (et non default=[]): évite le piège classique en Python où une valeur
     #  par défaut (une liste) serait partagée entre toutes les instances de cette classe.

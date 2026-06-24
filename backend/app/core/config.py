@@ -10,7 +10,7 @@
 #        permettant de classer un log comme "critical" automatiquement si un mot clé apparaît, 
 #        reajustable sans contact au code via une variable d'environnement séparé par des virgules.
 
-from pydandic_settings import BaseSettings, SettingsConfifDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 #   BaseSettongs !== BaseModel est une classe spéciale de Pydantic v2 conçue pour lire
 #       automatiquement les variables d'environnement et celles système, puis valider leur type.
 
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     #   Sans ce réglage, Pydantic lèverait une erreur de validation au démarrage dès qu'il 
     #    rencontre une variable du .env non expliqué explicitement comme champ de cette
     #    classe Settings précise.
-    model_config = SettingsConfifDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 #   Instance unique, importée partout où ces réglages sont nécessaires.
 settings = Settings() 

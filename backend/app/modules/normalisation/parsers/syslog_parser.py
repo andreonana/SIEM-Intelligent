@@ -32,7 +32,7 @@ class SyslogRFC3164Parser(LogParser):
         r"^<(?P<priority>\d+)>"             #   <34>        ->  groupe "priority"
         r"(?P<month>\w{3})\s+"              #   Oct         ->  groupe "month"
         r"(?P<day>\d{1,2})\s+"              #   11          ->  groupe "day"
-        r"(?P<time>\d{2}:\d{2})\s+"         #   22:14:15    ->  groupe "time"
+        fr"(?P<time>\d{2}:\d{2}:\d{2})\s+"         #   22:14:15    ->  groupe "time"
         r"(?P<host>\S+)\s+"                 #   mymachine   ->  groupe "host"
         r"(?P<message>.*)$"                 #   Tout le reste du message
     )
@@ -87,7 +87,7 @@ class SyslogRFC3164Parser(LogParser):
         return ParsedLog(
             timestamp=timestamp,
             source_ip=source_ip,
-            host=groups["hosts"],
+            host=groups["host"],
             raw_message=raw_message,
             tags=[],                        #   Le format RFC3164 ne contient jamais de champs "tags". Il n'existe que pour les logs arrivant déjà en JSON.
                                             #    on fournit donc une liste vide ici, cohérent avec default_value de déclarée dans ParsedLog et nécessaire 
