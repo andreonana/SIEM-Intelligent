@@ -11,16 +11,17 @@ from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
 from fastapi import APIRouter, Depends
 from apscheduler.schedulers.background import BackgroundScheduler
-from rbac import require_role
+from app.modules.rbac.roles import require_role
 
 load_dotenv()
 
 # ── Setup ─────────────────────────────────────────────────
 router = APIRouter()  # Backend dev adds this to main.py
 
+_es_host = os.getenv("ES_HOST", "localhost")
+_es_port = os.getenv("ES_PORT", "9200")
 es = Elasticsearch(
-    host=os.getenv("ES_HOST", "localhost"),
-    port=int(os.getenv("ES_PORT", 9200)),
+    hosts=[f"http://{_es_host}:{_es_port}"],
 )
 
 INDEX_LOGS  = os.getenv("ES_INDEX_LOGS", "siem-logs")

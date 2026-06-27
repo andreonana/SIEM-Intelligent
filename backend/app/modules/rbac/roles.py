@@ -7,7 +7,8 @@
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
-from auth import decode_access_token, bearer_scheme
+
+from app.modules.rbac.auth import decode_access_token, bearer_scheme
 
 # ── Role Hierarchy ────────────────────────────────────────
 # Higher number = more permissions
@@ -70,6 +71,20 @@ def require_role(minimum_role: str):
     which the backend dev can use for audit logging.
     """
     def check_role(user: dict = Depends(get_current_user)):
+        user_role = user["role"]
+
+        if isinstance(minimum_role, list):
+            #   *** Mode liste explicite (extension backend dev)    ***
+            #   Comparaison directe: Le rôle de l'utilisateur doit apparaître tel quel dans la liste fourni,
+            #    sans raisonnement de hiérarchie
+            if user_role not in minimum_role:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(f"Access denied. Requires one of {minimum_role}. "
+                    f"Your role: '{user.role}'."),
+                )
+            #   *** Mode hiérarchique original inchangé.
+
         user_level = ROLE_LEVELS.get(user["role"], 0)
         required_level = ROLE_LEVELS.get(minimum_role, 99)
         

@@ -32,7 +32,7 @@ class SyslogRFC3164Parser(LogParser):
         r"^<(?P<priority>\d+)>"             #   <34>        ->  groupe "priority"
         r"(?P<month>\w{3})\s+"              #   Oct         ->  groupe "month"
         r"(?P<day>\d{1,2})\s+"              #   11          ->  groupe "day"
-        fr"(?P<time>\d{2}:\d{2}:\d{2})\s+"         #   22:14:15    ->  groupe "time"
+        r"(?P<time>\d{2}:\d{2}:\d{2})\s+"         #   22:14:15    ->  groupe "time"
         r"(?P<host>\S+)\s+"                 #   mymachine   ->  groupe "host"
         r"(?P<message>.*)$"                 #   Tout le reste du message
     )

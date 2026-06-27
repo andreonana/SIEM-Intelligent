@@ -10,47 +10,24 @@
 #    ou fichier de classification). Si l'implémentation interne d ece module change, pas besoin de modification 
 #    dans ce fichier.
 
-import os
 from datetime import datetime, timezone
 
 from elasticsearch import AsyncElasticsearch
 
-from app.modules.normalisation.service import normalize
+from app.core.config import settings
+from app.modules.normalisation.service import normalize, NormalizedLog, normalize_json
 from app.schemas.log import RawLogIngest
 
-#   ********    DEPENDANCE EXTERNE  ********
-#   Variable : Es_LOGS_INDEX_NAME
-#   Attendue dans le fichier .env partagé à la racine du projet.
-#   Donné par le concepteur des index Elasticsearch (data/sécurité) car c'est le nom exact de l'index Elasticsearch
-#    dans lequel les logs normalisés doivent être stockés.
-#   Ce nom doit correspondre précisement à un index déjà créé avec son mapping (définition des types de champs) sur 
-#    le cluster Elasticsearch.
-#   Si ce nom diffère du nom réellement configuré sur le cluster, l'indexation échouera ou créera un index incorrect par défaut.
-#
-#   Une valeur par défaut est fournie ("smart-siem-ligs") uniquement pour permettre de démarrer le développement local 
-#    avant que cette variacle ne soit officiellement communiquée. Dès que la variable d'environnement réelle est définie 
-#    dans .env, elle prend automatiquement le dessus sur cette valeur par défaut.
-LOGS_INDEX_NAME = os.getenv("ES_LOGS_INDEX_NAME", "logs-siem")
-
-async def ingest_single_log(raw_log: RawLogIngest, es_client: AsyncElasticsearch) -> dict:
+async def _index_normalized_log(normalized: NormalizedLog, es_client: AsyncElasticsearch) -> dict:
     """
-    Traite un log brute de bout en bout et l'indexe dans Elasticsearch.
-    Ce traitement correspond au flux de production réel du système:
-        1 appel à cette fonction = 1seul log traité et socké.
-        Aucun traitement par lots présent ici(ingest_bulk_logs pour l'outil de développement séparé).
-    Paramètres:
-        raw_log: log brut reçu, déjà validé par le schéma RawLogIngest
-        es_client: Client Elasticsearch asynchrone partagé, injecté par FastAPI via la dépendance get_es_client()
-    Retourne un dictionnaire représentant le log tel qu'il a été indexé, avec son identifiant généré par Elasticsearch.
-    Lève une ValueError si la normalisation échoue (format de log invalide).
-    Lève toute autre exception si la communication avec Elasticsearch échoue (cluster indosponible, mapping incompatible).
+    Indexe un log déjç dans Elasticsearch et construit la réponse à retourner à l'appelant.
+    Cette fonction privée est partagée par ingest_single_log() et ingest_single_log_json().
+    Le sdeux ne diffèrentque par la façon dont elles obtiennent un NormalizedLog; l'indexation
+     dans Elasticsearch et la construction de la réponse sont, elles, rigoureusement identiques 
+     dans les deux cas. 
     """
 
-    #   Step 1: Délégation de la transformation au module de normalisation.
-    #   Elle encoit le log brut et reçoit le résultat final structuré sans connaître le scheminement.
-    normalized = normalize(raw_message=raw_log.raw_message, source=raw_log.source)
-
-    #   Step 2: Construction du document JSON à indexer. 
+    #   Construction du document JSON à indexer. 
     #   Avec Elasticsearch, contrairement à la DB relationnelle, il n'existe pas de classe représentant une table.
     #    on construit directement un dictionnaire Python, qui sera sérialisé tel que en JSON et envoyé au cluster.
     #
@@ -71,12 +48,12 @@ async def ingest_single_log(raw_log: RawLogIngest, es_client: AsyncElasticsearch
     #        mapping de l'index Elasticsearch ES_LOGS_INDEX_NAME. Si la définition de cet index évolue (add/delete a champ),
     #        ce dictionnaire devra être mis à jour en conéquence.
 
-    #   Step 3: Indexation du document dans Elasticsearch.
+    #   Indexation du document dans Elasticsearch.
     #   client.index() rest l'opération qui envoie ce document au cluster et le rend immédiatement persistant et rechargable.
     #   On ne précise pas de paramètrce "id=" explicite car Elastisearch en génère automatiqeument 1 pour chaque document,
     #    cohérent avec le principe "1 appel = 1 log" décrit au par avant.
     response = await es_client.index(
-        index=LOGS_INDEX_NAME,
+        index=settings.es_logs_index_name,
         document=document,
     )
 
@@ -95,6 +72,39 @@ async def ingest_single_log(raw_log: RawLogIngest, es_client: AsyncElasticsearch
         "tags": normalized.tags,
     }
 
+async def ingest_single_log(raw_log: RawLogIngest, es_client: AsyncElasticsearch) -> dict:
+    """
+    Traite un log brute de bout en bout et l'indexe dans Elasticsearch.
+    Ce traitement correspond au flux de production réel du système:
+        1 appel à cette fonction = 1seul log traité et socké.
+        Aucun traitement par lots présent ici(ingest_bulk_logs pour l'outil de développement séparé).
+    Paramètres:
+        raw_log: log brut reçu, déjà validé par le schéma RawLogIngest
+        es_client: Client Elasticsearch asynchrone partagé, injecté par FastAPI via la dépendance get_es_client()
+    Retourne un dictionnaire représentant le log tel qu'il a été indexé, avec son identifiant généré par Elasticsearch.
+    Lève une ValueError si la normalisation échoue (format de log invalide).
+    Lève toute autre exception si la communication avec Elasticsearch échoue (cluster indosponible, mapping incompatible).
+    """
+    normalized = normalize(raw_message=raw_log.raw_message, source=raw_log.source)
+    
+    return await _index_normalized_log(normalized, es_client)
+
+async def ingest_single_log_json(raw_json: dict, es_client: AsyncElasticsearch) -> dict:
+    """
+    Traite un log JSON natif dans Elasticsearch.
+    Utilisé par l'endpoint dédié POST /api/v1/logs/ingest/json, pour les sources qui parlent déjà JSON nativement.
+        Aucun traitement par lots présent ici(ingest_bulk_logs pour l'outil de développement séparé).
+    Paramètres:
+        raw_json: Dictionnaire JSON brute reçu, sdéjà validé par le schéma RawLogingestJSON
+        es_client: Client Elasticsearch asynchrone partagé, injecté par FastAPI via la dépendance get_es_client()
+    Retourne un dictionnaire représentant le log tel qu'il a été indexé, avec son identifiant généré par Elasticsearch.
+    Lève une ValueError si la normalisation échoue (format de log invalide).
+    Lève toute autre exception si la communication avec Elasticsearch échoue (cluster indosponible, mapping incompatible).
+    """
+    normalized = normalize_json(raw_json)
+    
+    return await _index_normalized_log(normalized, es_client)
+
 async def ingest_bulk_logs(raw_logs: list[RawLogIngest], es_client: AsyncElasticsearch) -> tuple[list[dict], list[str]]:
     """
     Traite une liste longue en une seul opération.
@@ -105,8 +115,8 @@ async def ingest_bulk_logs(raw_logs: list[RawLogIngest], es_client: AsyncElastic
      lever une exception au premier problème: 1 lot de plusieurs centaines de logs, il est important de savoir exactement lesquels
      ont échouées et pourquoi, sans perdre le traitement de tous les autres logs du même lot.
     """
-    successful_entries: list[dict] = []
-    error_messages: list[str] = []
+    successful_entries: list[dict]  = []
+    error_messages:     list[str]   = []
 
     for index, raw_log in enumerate(raw_logs):
         try:

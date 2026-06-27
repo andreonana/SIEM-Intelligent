@@ -24,14 +24,14 @@ class RawLogIngest(BaseModel):
     #        fréquents dans les logs Syslogs bruts.
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    raw_message: str = Field(
+    raw_message:    str = Field(
         min_length=1,
         description="La ligne de log brute, non parsée, telle que reçue.",
     )
     #   Field (min_length=1) refuse un message vide. Un log vide n'a aucune valeur d'iinvestigation et indiquerait
     #    un bug côté émetteur.
 
-    source: str = Field(
+    source:         str = Field(
         default="syslog",
         description=
         "Origine du transport : syslog, rest, agent_linux, agent-windows..."
@@ -44,7 +44,7 @@ class RawLogIngest(BaseModel):
     def source_must_be_known(cls, value:str) -> str:
         """
         Vérifie que la valeur du champ "source" fait partie d'une liste de sources reconnues par le système.
-        Si la valeur n'est pas reconnue, on lève une 'valueError' transformée automatiquement en réponse HTTP 42
+        Si la valeur n'est pas reconnue, on lève une 'valueError' transformée automatiquement en réponse HTTP 422
          avec un message clair l'appelant
         """
         allowed = {"syslog", "rest", "agent_linux", "agent_windows"}
@@ -89,3 +89,23 @@ class BulkIngestResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     #   default_factory=list (et non default=[]): évite le piège classique en Python où une valeur
     #  par défaut (une liste) serait partagée entre toutes les instances de cette classe.
+
+class RawLogIngestJSON(BaseModel):
+    """
+    Schéma de la requête ENTRANTE sur l'endpoint JSON dédié (POST /api/v1/logs/ingest/json).
+    Contrairement à RawLogIngest qui attend d'un champ string "raw_message" même pour des logs déjà structurés en JSON, ce 
+     schéma accepte un véritable objet JSON imbriqué.
+    Il évite à une source qui parlé djà JSON nativement de devoir sérialiser son JSON en strings avant de
+     l'envoyer, sachant que le serveur le redésérialiserait de toute façon immédiatement après réception.
+    Ce schéma est dédié exclusivement à la source "rest" (pas de sens pour les syslogs bruts) qui sont par nature text non structurés.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    raw_json: dict = Field(
+        description=(
+            "Le log est déjà structuré en JSON, sans aucune sérialisation préalable en string."
+            "Doit au moins contenir un champ 'timestamp' au format ISO 8601."
+        ),
+    )
+    #   Le type "dict" (non "str") est la diérence ondamentale avec RawLogIngest.raw_message.

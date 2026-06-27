@@ -22,8 +22,22 @@ load_dotenv(dotenv_path=_SHARED_ENV_FILE)
 # from backend.app.api.v1 import routers
 from fastapi import FastAPI
 
-from app.api.v1.routers.logs import router as logs_router
 from app.db.elasticsearch_client import close_es_client
+
+from app.api.v1.routers.logs import router as logs_router
+from app.api.v1.routers.auth import router as auth_router
+from app.api.v1.routers.health import router as health_router
+from app.api.v1.routers.alerts import router as alerts_router
+from app.api.v1.routers.dashboard import router as dashboard_router
+from app.api.v1.routers.search import router as search_router
+from app.api.v1.routers.investigation import router as investigation_router
+from app.api.v1.routers.soar import router as soar_router
+from app.api.v1.routers.rules import router as rules_router
+from app.api.v1.routers.reports import router as reports_router
+from app.api.v1.routers.users import router as users_router
+from app.api.v1.routers.audit import router as audit_router
+
+from app.modules.rbac.retention import router as retention_router, start_retention_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +46,7 @@ async def lifespan(app: FastAPI):
     Tout ce qui se trouve avant l'instruction "yield" s'exécute une seule fois, au démarrage du serveur, avant que la
      première requête ne soit acceptée. Tout ce qui se trouve après "yield" s'exécute une seule fois, à l'arrêt du serveur.
     """
+    start_retention_scheduler()
     #   Aucune action n'est nécessaire au démarrage à ce jour:
     #   La connexion au cluster Elasticsearch est créée automatiqeument, de façon différée, au premier appel réel à
     #    get_es_client() (db/elasticsearch_client). Il n'y a donc rien à initialiser explicitement ici.
@@ -89,6 +104,26 @@ app.include_router(logs_router)
 #    fichier, qui gère par ailleurs la fermeture de la connexion
 #    Elasticsearch — FastAPI accepte les deux mécanismes en parallèle.
 #
+#   *** MODULE RETENTION END    ***
+
+#   Beanchement de tous mles routeurs  de l'API. Chaque routeur définit lui-même son préfixe de chemin.
+app.include_router(auth_router)
+app.include_router(health_router)
+app.include_router(alerts_router)
+app.include_router(dashboard_router)
+app.include_router(search_router)
+app.include_router(investigation_router)
+app.include_router(soar_router)
+app.include_router(rules_router)
+app.include_router(reports_router)
+app.include_router(users_router)
+app.include_router(audit_router)
+
+#   *** MODULE RETENTION START  ***
+#
+#   Branche l'nedpoint POST /api/admin/retnetion/run, défini directement dnas backend/retention.py protégé
+#    par require_role("administrateur")
+app.include_router(retention_router)
 #   *** MODULE RETENTION END    ***
 
 @app.get("/health")

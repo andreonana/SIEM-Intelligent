@@ -10,12 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from elasticsearch import AsyncElasticsearch
 
 from app.db.elasticsearch_client import get_es_client
-from app.schemas.log import RawLogIngest, NormalizedLogOut, BulkIngestResult
-from app.modules.ingestion.service import ingest_bulk_logs, ingest_single_log
+from app.schemas.log import RawLogIngest, RawLogIngestJSON, NormalizedLogOut, BulkIngestResult
+from app.modules.ingestion.service import ingest_bulk_logs, ingest_single_log, ingest_single_log_json
+from app.modules.ingestion.read_service import list_logs, get_log_by_id
 
 #   Protection locale et basique de cet endroit (clé API de secours et limitation de débit) 
 #    pour le détail de ce que ces 2 fonctions font et ne font pas
 from app.modules.rbac.local_protection import verify_simple_api_key, enforce_rate_limit
+from app.modules.rbac.roles import require_role
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 
@@ -34,24 +36,14 @@ router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
 #
 #   *** ENDPOINT LOGIN END  ***
 
+#   =================================================================================
+#       PORTES D'ENTREE:    Réception de données depuis d'autres services
+#   =================================================================================
+
 @router.post(
     "/ingest",
     response_model=NormalizedLogOut,
     status_code=status.HTTP_201_CREATED,
-    #   *** RÔLE ATTENDU POUR CET ENDPOINT : "analyst" ou "admin"   ***
-    #   Cet endpoint reçoit un nouveau log et l'indexe dans le système (écriture)
-    #   Un rôle "reader" ne devrait pas pouvoir injecter de nouvelles données dans 
-    #    le système.
-    #
-    #   En attendant la réception du rbac.py, la protection active sur cet
-    #    endpoint est purement locale et basique (clé API + limitation de débit). 
-    #   Dès que rbac.py fournie, remplacer la ligne ci-dessous par quelque chose comme:
-    #   
-    #   from rbac import require_role
-    #   dependencies=[Depends(require_role("analyst"))]
-    #
-    #   Le nom exact ede la fonction et sa syntaxe d'appel devront être validés
-    #    à la réception de rbac.py réel.
     dependencies=[
         Depends(verify_simple_api_key),
         Depends(enforce_rate_limit),
@@ -63,8 +55,8 @@ async def ingest_log(
     es_client: AsyncElasticsearch = Depends(get_es_client),
 ):
     """
-    Reçoit un log brut, le fait normaliser par le module de normalisation, puis l'indexe dans Elasticsearch via le module d'ingestion.
-
+    Reçoit un log brut, le fait normaliser par le module de normalisation, puis l'indexe
+     dans Elasticsearch via le module d'ingestion.
     C'est l'endpoint de production réel: 1 appel HTTP = 1 log traité.
     """
     try:
@@ -90,22 +82,48 @@ async def ingest_log(
     return log_entry
 
 @router.post(
+    "/ingest/json",
+    response_model=NormalizedLogOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(verify_simple_api_key),
+        Depends(enforce_rate_limit),
+    ]
+)
+
+async def ingest_log_json(
+    raw_log: RawLogIngestJSON,
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+):
+    """
+    Reçoit un log déjà structuré comme objet JSON natif (et non string), le fait normaliser, puis l'indexe
+     dans Elasticsearch.
+    Endpoint dédié aux sources qui parlent déjà JSON nativement (comme agent Filebeat), pour éviter la friction
+     de devoir sérialiser leur JSON en string juste pour que ce serveur le redésérialise immédiatement après réception.
+    """
+    try:
+        log_entry = await ingest_single_log_json(raw_log.raw_json, es_client)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Erreur de communication avec Elasticsearch: {exc}",
+        ) from exc
+    
+    return log_entry
+
+@router.post(
     "/ingest/bulk",
     response_model=BulkIngestResult,
-    #   *** RÔLE ATTENDU POUR CET ENDPOINT : "administrateur"   ***
-    #   Cet endpoint permet d'injecter un grand nombre de logs en une seule requête.
-    #   Il sagit d'un outil de développement et de test (ex. pour charger données simulées), pas du flux de production réel.
-    #   Un rôle plus restricti que pour l'ingestion unitaire est recommandé car un appel malveillant à cet endpoint aurait un impact 
-    #    plus important (insertion massive de données).
-    #
-    #   Même remarque que pour l'endpoint précédent concernant le remplacement futur par Depends(require_role("admin")).
     dependencies=[
         Depends(verify_simple_api_key),
         Depends(enforce_rate_limit),
     ],
 )
 
-async def ingest_logs_bulk(raw_logs: list[RawLogIngest], es_client: AsyncElasticsearch = Depends(get_es_client),):
+async def ingest_logs_bulk(
+        raw_logs: list[RawLogIngest], 
+        es_client: AsyncElasticsearch = Depends(get_es_client),
+    ):
     """
     Reçoit une liste de logs bruts et les traite tous via le module d'ingestion.
     Cet endpoint est un outil de développement et de test uniquement:
@@ -121,3 +139,56 @@ async def ingest_logs_bulk(raw_logs: list[RawLogIngest], es_client: AsyncElastic
         total_failed=len(errors),
         errors=errors,
     )
+
+#   =================================================================================
+#       PORTES DE SORTIE:   Envoie de données vers d'autres services
+#   =================================================================================
+
+@router.get(
+    "",
+    #   *** RÔLE ATTENDU POUR CET ENDPOINT : "reader"   ***
+    #   Cet endpoint permet de recevoir partiellement les logs pour de simple consultations.
+)
+
+async def get_all_logs(
+    page: int = 1,
+    page_size: int = 50,
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    user: dict = Depends(require_role("reader")),
+):
+    """
+    Retourne la liste des logs stockés, avec pagination, du plus récent au plus ancien.
+    Paramètres de requête optionnels:
+        page: numéro de page (défaut: 1).
+        page_size: nombre de logs par page (défaut: 50)
+    """
+    try:
+        return await list_logs(es_client, page=page, page_size=page_size)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Erreur de communication avec Elasticsearch: {exc}",
+        ) from exc
+
+@router.get(
+    "/{log_id}",
+    #   *** RÔLE ATTENDU POUR CET ENDPOINT : "reader"   ***
+    #   Cet endpoint permet de consulter simplement les logs (partiellement)
+)
+
+async def get_log(
+    log_id: str,
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    user: dict = Depends(require_role("reader")),
+):
+    """
+    Retourne un log précis à partir de son identiiant Elasticsearch.
+    Retourne une erreur 404 si aucun log ne correspond à cet identifiant.
+    """
+    log = await get_log_by_id(es_client, log_id)
+    if log is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Aucun log trouvé dans l'identifiant '{log_id}'.",
+        )
+    return log
