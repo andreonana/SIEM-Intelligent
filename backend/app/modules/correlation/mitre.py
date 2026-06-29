@@ -1,13 +1,13 @@
 # ============================================================
 # mitre.py — MITRE ATT&CK Scenario Registry
-# Defines the 5 attack scenarios the SIEM detects
+# 5 attack scenarios the SIEM detects
 # Reference: https://attack.mitre.org
 # ============================================================
 
 TACTICS = {
     "TA0001": "Initial Access",
+    "TA0004": "Privilege Escalation",
     "TA0005": "Defense Evasion",
-    "TA0007": "Discovery",
     "TA0010": "Exfiltration",
     "TA0011": "Command and Control",
 }
@@ -25,16 +25,17 @@ TECHNIQUES = {
         "name": "Valid Accounts — Off-Hours Access",
         "tactic": "TA0001",
         "description": (
-            "A valid account is used to log in at an unusual "
-            "time — a sign of compromise or insider threat."
+            "A valid account is used outside normal working hours "
+            "— a sign of compromise or insider threat."
         ),
     },
-    "T1046": {
-        "name": "Network Service Discovery — Internal Port Scan",
-        "tactic": "TA0007",
+    "T1098": {
+        "name": "Account Manipulation — Unauthorized Privilege",
+        "tactic": "TA0004",
         "description": (
-            "A compromised internal machine scans other internal "
-            "machines to find open ports and services to target."
+            "An account is granted elevated privileges "
+            "without going through the normal approval process. "
+            "Could indicate privilege escalation by an attacker."
         ),
     },
     "T1071": {
@@ -42,40 +43,35 @@ TECHNIQUES = {
         "tactic": "TA0011",
         "description": (
             "A machine inside the network communicates with a known "
-            "malicious IP address — a sign of malware infection "
-            "or command and control activity."
+            "malicious IP address — sign of malware or C2 activity."
         ),
     },
     "T1070": {
         "name": "Indicator Removal — Log Service Stopped",
         "tactic": "TA0005",
         "description": (
-            "The attacker stops or disables the logging service "
-            "to hide their tracks and prevent detection."
+            "The attacker stops the logging service to hide "
+            "their tracks and prevent detection."
         ),
     },
 }
 
 # ── Banned IP list ────────────────────────────────────────
-# Known malicious IPs your SIEM watches for
-# In production: loaded from a threat intelligence feed
-# For the demo: this static list is used
 BANNED_IPS = [
-    "94.12.44.17",    # known C2 server
-    "185.220.101.45", # TOR exit node linked to attacks
-    "178.43.12.87",   # attacker IP from CTU incident
-    "91.108.4.0",     # malware distribution server
-    "45.142.212.100", # ransomware C2
-    "104.21.44.200",  # phishing infrastructure
-    "193.32.161.12",  # known APT infrastructure
+    "94.12.44.17",
+    "185.220.101.45",
+    "178.43.12.87",
+    "91.108.4.0",
+    "45.142.212.100",
+    "104.21.44.200",
+    "193.32.161.12",
 ]
 
-# ── Working hours definition ──────────────────────────────
+# ── Working hours ─────────────────────────────────────────
 WORK_HOURS = {
-    "start": 7,   # 07:00
-    "end":   20,  # 20:00
-    "days":  [0, 1, 2, 3, 4],  # Monday=0 to Friday=4
-    # Saturday=5 and Sunday=6 are always outside hours
+    "start": 7,
+    "end":   20,
+    "days":  [0, 1, 2, 3, 4],
 }
 
 # ── Attack scenarios ──────────────────────────────────────
@@ -88,27 +84,26 @@ SCENARIOS = {
         "technique_id":   "T1110",
         "severity":       "CRITICAL",
         "description": (
-            "An attacker tries many passwords rapidly against "
-            "an account. Detected when 5 or more failed login "
-            "attempts come from the same source IP within 60 seconds."
+            "An attacker sends rapid repeated login attempts "
+            "from the same IP. Detected when 5 or more failures "
+            "occur within 60 seconds."
         ),
         "attack_steps": [
-            "Attacker identifies a target account or service",
-            "Attacker sends rapid repeated login attempts with different passwords",
-            "Multiple failed authentication events are generated",
+            "Attacker identifies a service accepting logins (SSH, RDP, web login)",
+            "Automated tool sends thousands of password attempts per minute",
+            "Each failure generates a warning auth log",
             "If undetected: attacker eventually finds the correct password",
-            "Compromised account gives attacker access to the system",
+            "Compromised account becomes attacker foothold inside the network",
         ],
         "log_indicators": [
             "log_type = 'auth'",
             "raw_message contains 'Failed' OR 'Invalid' OR 'Authentication failure'",
-            "Same source_ip appears 5 or more times within 60 seconds",
+            "Same source_ip appears 5+ times within 60 seconds",
         ],
         "soar_response": "block_ip (AUTO)",
         "false_positive_risk": (
             "A legitimate user who forgot their password. "
-            "The 5-attempt threshold in 60 seconds reduces this risk "
-            "as a real user rarely tries that many times that fast."
+            "The 5-attempt threshold in 60 seconds reduces this risk."
         ),
     },
 
@@ -117,18 +112,18 @@ SCENARIOS = {
         "rule_id":        "outside_hours",
         "tactic_id":      "TA0001",
         "technique_id":   "T1078",
-        "severity":       "WARNING",
+        "severity":       "CRITICAL",
         "description": (
-            "A user account connects to the system outside normal "
-            "working hours (before 07:00 or after 20:00, or on "
-            "weekends). This can indicate account compromise or "
+            "A successful login outside 07:00-20:00 Monday-Friday "
+            "or on weekends. Indicates account compromise or "
             "an insider threat acting covertly."
         ),
         "attack_steps": [
-            "Attacker or insider waits until outside working hours",
-            "Uses valid credentials to log in without being noticed",
-            "Accesses sensitive files or systems while most staff are offline",
-            "Exfiltrates data or plants backdoors under the cover of off-hours",
+            "Attacker obtains valid credentials via phishing or brute force",
+            "Waits until outside working hours to avoid detection",
+            "Logs in using the stolen credentials",
+            "Authentication success log generated at unusual time",
+            "SIEM checks timestamp against working hours and fires CRITICAL alert",
         ],
         "log_indicators": [
             "log_type = 'auth'",
@@ -139,75 +134,71 @@ SCENARIOS = {
         "soar_response": "escalate_admin (AUTO)",
         "false_positive_risk": (
             "A legitimate employee working late or on weekends. "
-            "Known exceptions (maintenance windows, on-call staff) "
-            "should be added to a whitelist in the .env file."
+            "Known exceptions should be whitelisted in .env."
         ),
     },
 
-    "port_scan": {
-        "name":           "Internal Port Scan",
-        "rule_id":        "port_scan",
-        "tactic_id":      "TA0007",
-        "technique_id":   "T1046",
-        "severity":       "HIGH",
+    "unauthorized_privileges": {
+        "name":           "Unauthorized Privilege Modification",
+        "rule_id":        "unauthorized_privileges",
+        "tactic_id":      "TA0004",
+        "technique_id":   "T1098",
+        "severity":       "CRITICAL",
         "description": (
-            "An internal machine is scanning other machines on the "
-            "network looking for open ports. This is a sign that "
-            "the machine is compromised and the attacker is doing "
-            "internal reconnaissance before moving laterally."
+            "A user account has been granted elevated privileges "
+            "without going through the normal approval process. "
+            "This may indicate privilege escalation by an attacker "
+            "who has compromised an admin account."
         ),
         "attack_steps": [
-            "Attacker has already compromised one internal machine",
-            "Attacker runs a port scanner (nmap or similar) from that machine",
-            "The machine sends connection probes to many ports on other machines",
-            "Open ports are identified as targets for the next attack step",
-            "Attacker moves to another machine using a discovered open service",
+            "Attacker has access to a privileged account",
+            "Attacker modifies permissions of another account to gain persistence",
+            "sudo or admin rights are added without an official request",
+            "The privilege change is logged by the system",
+            "SIEM detects the unrecognized privilege modification and fires CRITICAL",
         ],
         "log_indicators": [
-            "log_type = 'network'",
-            "source_ip is an INTERNAL IP (192.168.x.x or 10.x.x.x)",
-            "destination_ip is also INTERNAL",
-            "More than 15 different destination ports contacted in 30 seconds",
-            "OR raw_message contains 'port scan' OR 'Nmap'",
+            "log_type = 'auth' OR log_type = 'system'",
+            "raw_message contains 'sudo' OR 'privilege' OR 'admin' OR 'root'",
+            "AND raw_message contains 'added' OR 'granted' OR 'modified' OR 'changed'",
+            "username performing the change is NOT in the approved admin list",
         ],
-        "soar_response": "isolate_machine (AUTO) + escalate_admin (AUTO)",
+        "soar_response": "disable_account (CONFIRM) + escalate_admin (AUTO)",
         "false_positive_risk": (
-            "A legitimate IT administrator running a vulnerability scan. "
-            "Admin machines should be whitelisted in the .env file "
-            "under SCAN_WHITELIST_IPS."
+            "A legitimate IT admin granting rights to a new employee. "
+            "Approved admins should be listed in APPROVED_ADMINS in .env. "
+            "Changes from approved admins do not trigger this rule."
         ),
     },
 
     "communication_banned": {
-        "name":           "Communication with Banned Malicious IP",
+        "name":           "Communication with Malicious IP",
         "rule_id":        "communication_banned",
         "tactic_id":      "TA0011",
         "technique_id":   "T1071",
-        "severity":       "CRITICAL",
+        "severity":       "WARNING",
         "description": (
-            "A machine inside the CTU network is communicating "
-            "with a known malicious IP address. This strongly "
-            "indicates the machine is infected with malware "
-            "that is contacting its command and control server."
+            "A machine inside the network communicates with a "
+            "known malicious IP. Indicates possible malware "
+            "infection contacting a command and control server."
         ),
         "attack_steps": [
-            "Malware is installed on an internal machine (via phishing or exploit)",
-            "Malware attempts to contact its C2 server to receive commands",
-            "The outbound connection to the malicious IP is logged",
-            "Attacker can now remotely control the infected machine",
-            "Data theft, ransomware deployment, or lateral movement follows",
+            "Malware installed via phishing or exploit",
+            "Malware contacts C2 server to receive attacker commands",
+            "Outbound connection to malicious IP appears in network logs",
+            "SIEM checks every outbound IP against the banned list",
+            "Match found — WARNING alert triggered",
         ],
         "log_indicators": [
             "log_type = 'network'",
             "direction = 'outbound'",
-            "destination_ip is in the BANNED_IPS list",
-            "Single occurrence is enough to trigger CRITICAL alert",
+            "destination_ip is in BANNED_IPS list",
+            "Single occurrence is enough",
         ],
-        "soar_response": "block_ip (AUTO) + isolate_machine (AUTO) + escalate_admin (AUTO)",
+        "soar_response": "block_ip (AUTO) + escalate_admin (AUTO)",
         "false_positive_risk": (
             "Very low. Legitimate software does not contact known "
-            "malicious IPs. Any match should be treated as a "
-            "confirmed infection until proven otherwise."
+            "malicious IPs. Any match should be investigated."
         ),
     },
 
@@ -216,32 +207,29 @@ SCENARIOS = {
         "rule_id":        "log_hidden",
         "tactic_id":      "TA0005",
         "technique_id":   "T1070",
-        "severity":       "HIGH",
+        "severity":       "CRITICAL",
         "description": (
-            "The logging or audit service has been stopped on an "
-            "endpoint. This is a deliberate attempt by an attacker "
-            "to stop the SIEM from receiving logs from that machine, "
-            "hiding all subsequent activity."
+            "The logging service has been deliberately stopped on "
+            "an endpoint. The attacker is trying to prevent the SIEM "
+            "from receiving any further logs from that machine."
         ),
         "attack_steps": [
             "Attacker has access to a machine inside the network",
-            "Attacker runs: systemctl stop rsyslog OR net stop eventlog",
-            "The logging service sends a final 'stopped' event before going silent",
-            "All subsequent activity on that machine becomes invisible to the SIEM",
-            "Attacker can now act freely without generating any detectable logs",
+            "Runs: systemctl stop rsyslog OR net stop eventlog",
+            "Logging service sends final 'stopped' event before silence",
+            "SIEM detects this final event and fires CRITICAL immediately",
+            "All subsequent attacker activity on that machine is invisible",
         ],
         "log_indicators": [
             "log_type = 'system'",
             "raw_message contains 'rsyslog stopped' OR 'auditd stopped'",
-            "OR raw_message contains 'Windows Event Log stopped'",
-            "OR raw_message contains 'logging service disabled'",
-            "Single occurrence on any host triggers immediate alert",
+            "OR 'Windows Event Log stopped' OR 'logging service disabled'",
+            "Single occurrence on any host triggers CRITICAL immediately",
         ],
-        "soar_response": "escalate_admin (AUTO) via webhook immediately",
+        "soar_response": "escalate_admin (AUTO)",
         "false_positive_risk": (
-            "Planned system maintenance that includes stopping log services. "
-            "A maintenance window flag in the settings can suppress "
-            "this alert during scheduled downtime."
+            "Planned maintenance. Set MAINTENANCE_MODE=true in .env "
+            "to suppress alerts during scheduled downtime."
         ),
     },
 }
@@ -271,27 +259,9 @@ def list_scenarios() -> list:
     ]
 
 def is_banned_ip(ip: str) -> bool:
-    """
-    Checks if an IP is in the banned list.
-    Called by the correlation engine for every outbound connection.
-
-    Usage:
-        if is_banned_ip("94.12.44.17"):
-            # trigger communication_banned rule
-    """
     return ip in BANNED_IPS
 
 def is_outside_hours(hour: int, weekday: int) -> bool:
-    """
-    Checks if a given hour and weekday is outside working hours.
-    Called by the engine for every successful login event.
-
-    Usage:
-        from datetime import datetime
-        now = datetime.utcnow()
-        if is_outside_hours(now.hour, now.weekday()):
-            # trigger outside_hours rule
-    """
     if weekday not in WORK_HOURS["days"]:
         return True
     return hour < WORK_HOURS["start"] or hour >= WORK_HOURS["end"]
