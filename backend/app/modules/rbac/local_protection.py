@@ -14,19 +14,12 @@
 #           2. Une limitation de débit (rate limiting) protégeant spécifiquement l'endpoint d'ingestion contre un flot de requêtes excessif,
 #               qui satureraut Elasticsearch ou l'API elle-même. Une préoccupation purement technique, sans rapport avec la notion de user role
 
-import os
 import time
 from collections import defaultdict
 
 from fastapi import Header, HTTPException, Request, status
 
-#   ********    DEPENDANCE EXTERNE  ********
-#   Variable: INGEST_API_KEY attendue dans le fichier .env racine du projet
-#   Clé statique utilisée pour une protection minimale de l'endpointd'ingestion, en attendant le branchement complet du système d'authentification.
-#
-#   Une valeur de secours est fournie par défaut ("dev-only-change-me") pour ne jamais bloquer le démarrage de l'application avant que .env ne soit disponible.
-#   Cette valeur est explicitement nommée pour qu'elle ne puisse jamais être cnfondue avec une vraie clé de production en cas de subsistance par erreur.
-INGEST_API_KEY = os.getenv("INGEST_API_KEY", "dev-only-change-me")
+from app.core.config import settings
 
 def verify_simple_api_key(x_api_key: str = Header(...)) -> None:
     """
@@ -35,7 +28,7 @@ def verify_simple_api_key(x_api_key: str = Header(...)) -> None:
      FastAPI renvoie automatiquement une erreur avant même l'exécution de cette fonction.
      Lève une HTTPException 401 si la clé fournie ne corespond pas à celle attendue.
     """
-    if x_api_key != INGEST_API_KEY:
+    if x_api_key != settings.ingest_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Clé API invalide ou manquante.",
@@ -47,12 +40,6 @@ def verify_simple_api_key(x_api_key: str = Header(...)) -> None:
 #   Si l'application devait un jour tourner sur plusieurs instances en parallèle, cette protection devrait un jour être déplacée vers 
 #    un système de stockage partagé entre instances. Pas nécessaire pour le périmètre actuel du projet.
 _request_timestamps: dict[str, list[float]] = defaultdict(list)
-
-_RATE_LIMIT_MAX_REQUESTS = 100
-#   Nombre maximal de requêtes autorisées par fenêtre de temps glissante.
-
-_RATE_LIMIT_WINDOW_SECONDS = 60
-#   Duée de la fenêtre gilssante, en secondes.
 
 def enforce_rate_limit(request: Request) -> None:
     """
@@ -72,16 +59,16 @@ def enforce_rate_limit(request: Request) -> None:
 
     #   Retrait des hordatages trop anciens (hors de la fenêtre) avant de compter les requêtes restantes.
     #   Sans cette purge, le dictionnaire accumulerait indéfiniment des entrées obsolètes en mémoire sur un serveur qui tourne longtemps
-    cutoff = now - _RATE_LIMIT_WINDOW_SECONDS
+    cutoff = now - settings.rate_limit_window_seconds
     while timestamps and timestamps[0] < cutoff:
         timestamps.pop(0)
 
-    if len(timestamps) >= _RATE_LIMIT_MAX_REQUESTS:
+    if len(timestamps) >= settings.rate_limit_max_requests:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
-                f"Limite de {_RATE_LIMIT_MAX_REQUESTS} requêtes par "
-                f"{_RATE_LIMIT_WINDOW_SECONDS} secondes dépassées pour cette source"
+                f"Limite de {settings.rate_limit_max_requests} requêtes par "
+                f"{settings.rate_limit_window_seconds} secondes dépassées pour cette source"
             ),
         )
 

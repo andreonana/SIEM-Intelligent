@@ -8,63 +8,37 @@
 
 import os
 
+from app.core.config import settings
 from elasticsearch import AsyncElasticsearch
 #   FastAPI est asynchrone donc pas "Elasticsearch synchrone":
 #       Une connexion bloquante gèlerait l'event loop de tout le serveur pendant chaque requête vers Elasticsearch.
 
 def _build_client() -> AsyncElasticsearch:
     """
-    Construit le client ES à partir des variables d'environnement.
+    Construit et retourne une instance du client ES configurée à partir du setting centralisé.
     Fonction privée (préfixe _): Le reste de l'application ne l'appelle jamais directement, seul get_es_client()
         ci-dessous peut être appelé
     """
 
-    #   --------    Variable attendue dans le .env  ----------
-    #   ##  ELASTICSEARCH_URL est attendu dans .env racinde du projet fourni par l'infra.
-    #       C'est l'adresse réseau du cluster Elasticsearch, permettant de diriger où envoyer les logs.
-    es_url = os.getenv("ELASTICSEARCH_URL")
-    if not es_url:
-        raise RuntimeError(
-            "ELASTICSEARCH_URL manquante dans l'environnement. "
-            "Cette variable doit être fournie dans le .env partagé du projet."
-            "Sans elle, impossible de savoir à quel ElasticSearch se connecter."
-        )
-
-    #   --------    Authentification    --------
-    #   Element à fournir dans le .env racine du projet par la sécurité pour clé d'authentification auprès du
-    #        cluster d'Elasticsearch.
-    #       Optionnelle si ELASTIC_USERNAME et ELASTIC_PASSWORD sont fournis à la place 
-    #   Cas 1: Avec clé d'API fournie par la sécurité pour gérer l'authentification au cluster ES dans son périmètre.
-    api_key = os.getenv("ELASTIC_API_KEY")
-
-    #   Cas 2:  Authentification basique sans clé API dont les données sont toujours fournies par la sécurité
-    es_username = os.getenv("ELASTIC_USERNAME")
-    es_password = os.getenv("ELASTIC_PASSWORD")
-
-    #   --------    TLS:    Certificats générés par la sécurité --------
-    #   Variable attendue dans .env racine du projet de la part de la sécurité comme le chemin 
-    #    local vers le certificat présent dans git.ignore, donc à recevoir en direct.
-    ca_cert_path = os.getenv("ELASTIC_CA_CERT_PATH")
-
     #   Construction du dictionnaire de paramètres pour éviter d'appeler AsyncElasticsearch() directement avec tous
     #    les arguments, car certains paramètres sont optionnels et ne doivent être transmis que ce qui existe.
     client_kwargs: dict = {
-        "hosts": [es_url],
+        "hosts": [settings.elasticsearch_url],
     }
 
-    if api_key:
-        client_kwargs["api_key"] = api_key
-    elif es_username and es_password:
-        client_kwargs["basic_auth"] = (es_username, es_password)
+    if settings.elasticsearch_api_key:
+        client_kwargs["api_key"] = settings.elasticsearch_api_key
+    elif settings.elasticsearch_username and settings.elasticsearch_password:
+        client_kwargs["basic_auth"] = (settings.elasticsearch_username, settings.elasticsearch_password)
     else:
         #   Aucune méthode d'autehtnification
         print("[WARNING] Aucune configuration Elasticsearch configurée. Acceptable uniquement sur un cluster local sans protection.")
     
-    if ca_cert_path:
-        client_kwargs["ca_certs"] = ca_cert_path
-        client_kwargs["verify_ccerts"] = True
+    if settings.elasticsearch_ca_cert_path:
+        client_kwargs["ca_certs"] = settings.elasticsearch_ca_cert_path
+        client_kwargs["verify_certs"] = True
     else:
-        client_kwargs["verify_ccerts"] = False
+        client_kwargs["verify_certs"] = False
         print("[WARNING] ELASTIC_CA_CERT_PATH n'est pas configuré. "
               "La connexion à Elastisearch se fait donc sans vérification du certificat TLS.")
         

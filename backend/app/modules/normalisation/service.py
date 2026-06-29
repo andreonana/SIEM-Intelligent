@@ -16,11 +16,18 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from elasticsearch import AsyncElasticsearch
+from starlette.responses import AsyncContentStream
+
+from app.modules.normalisation.parsers.base import ParsedLog
+from app.modules.normalisation.parsers.json_parser import JSONLogParser
 from app.modules.normalisation.parsers.registry import parser_registry
-from app.modules.normalisation.tagging import determine_log_type, determine_severity
+from app.modules.normalisation.tagging import determine_log_type
+from app.modules.normalisation.tag_severity_service import get_tag_severity_table, determine_severity_from_tags
+from backend.app.modules.rbac.field_visibility import NORMALIZATION_FIELDS
 
 @dataclass
-class NormalizedLogs:
+class NormalizedLog:
     """
     Structure de données représentant un log entièrement normalisé et classifié, prêt à être stocké.
     Cette structure est distincte de ParsedLog définie car PasredLog est un détail interne des analyseurs
@@ -35,8 +42,36 @@ class NormalizedLogs:
     severity: str
     raw_message: str
     tags: list[str]
+    extra: dict
 
-def normalize(raw_message: str, source: str) -> NormalizedLogs:
+#   *** REGLE DE VISIBILITE PAR RÔLE    ***
+#
+#   Liste des noms des champs constituant strictement le résultat de la normalisation
+NORMALIZED_FIELDS = frozenset(
+    {"timestamp", "source_ip", "host", "log_type", "severity", "raw_message", "tags"}
+)
+
+def _classify_and_build(parsed: ParsedLog, severity: str) -> NormalizedLog:
+    """
+    Applique la classification automatique (criticité et type) à un log déjà analysé, puis construit la structure 
+     publique de ce module.
+    Cette fonction privée est utilisée chez normalize() et normalize_json() qui ont des parties identiques pour éviter
+     la redondance.
+    """
+    log_type = determine_log_type(parsed)
+
+    return NormalizedLog(
+        timestamp=parsed.timestamp,
+        source_ip=parsed.source_ip,
+        host=parsed.host,
+        log_type=log_type,
+        severity=severity,
+        raw_message=parsed.raw_message,
+        tags=parsed.tags,
+        extra=parsed.extra,
+    )
+
+async def normalize(raw_message: str, source: str, es_client: AsyncElasticsearch) -> NormalizedLog:
     """
     Point d'entrée unique du module de normalisation.
 
@@ -56,17 +91,32 @@ def normalize(raw_message: str, source: str) -> NormalizedLogs:
     #   parsed est un ParsedLog - un détail interne, jamais retourné tel quel à l'appelant externe de cette fonction normalize()
     parsed = parser.parse(raw_message)
 
-    #   Step 3: Classification automatiqeu du log (criticité et type)
-    severity = determine_severity(parsed)
-    log_type = determine_log_type(parsed)
+    #   Step 3: La table tag -> severity est relue à chaque appel de normalize(), au lieu de mettre en cache en mémoire. Cette table
+    #    est modifiable par un admin, et le log ingéré juste apr_s doit immédiatement refléter le nouveau mapping, sans délai de 
+    #    propagation ni risque de travailler sur une version périmée du cache.
+    table = await get_tag_severity_table(es_client)
+    severity = determine_severity_from_tags(parsed.tags, table)
 
-    #   Step 4: Construction et retour de la structure publique de ce module, combinant le résultat du parsing et de classification
-    return NormalizedLogs(
-        timestamp=parsed.timestamp,
-        source_ip=parsed.source_ip,
-        host=parsed.host,
-        log_type=log_type,
-        severity=severity,
-        raw_message=parsed.raw_message,
-        tags=parsed.tags,
-    )
+    #   Step 4: Classification et construction du réseau final, via _classify_and_build()
+    return _classify_and_build(parsed, severity)
+
+async def normalize_json(data: dict) -> NormalizedLog:
+    """
+    Point d'entrée alternatif dui module de normalisation, dédié aux logs reçuis sous forme d'obket JSON délà désérialisé (différent de string).
+    Utilsée par l'endpoint dédié POST /app/v1/logs/ingest/json, pour les sources qui parlent déjà nativement, évitant ainsi à l'émetteur de devoir
+     sérialiser son JSON en strings juste pour que ce module la redésérialise immédiatement après réception.
+    Cette fonction est strictement équivalente à normalize() pour ce qui concerne la classification et la structure du résultat; seule l'étape 
+     d'extraction change (appelle directement le parser JSON sur le dictionnaire déjà fourni, sans passer par le registre de parsers ni par un étape
+     de désérialisation).
+    Lève une ValueError si un cmp obligatoire est manquant dans le dictionnaire fourni.
+    """
+    #   On instancie directement le parser JSON, sans passer par le registre: Cette fonction est UNIQUEMENT destinée aux logs JSON natifs, 
+    #    il n'ya donc pas d'ambiguïté sur le parser à utiliser, contrairement à normalize() ci-dessus qui doit choisir parmi plusieurs formats
+    #    possibles selon la source.
+    parser = JSONLogParser()
+    parsed = parser.parse_dict(data)
+
+    table = await get_tag_severity_table(es_client)
+    severity = determine_severity_from_tags(parsed.tags, table)
+
+    return _classify_and_build(parsed, severity)

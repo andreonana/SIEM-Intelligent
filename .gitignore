@@ -61,3 +61,7 @@ secrets/
 
 #   Backend
 backend/*.env
+backend/app/certs/*
+
+#   Certificats
+ca.crt
