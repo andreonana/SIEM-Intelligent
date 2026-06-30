@@ -123,7 +123,7 @@ async def _process_alerts(alerts: list[CorrelationAlert], es_client: AsyncElasti
         
         await _trigger_lockout_if_needed(alert, es_client)
 
-async def run_correlation_scan(es_client: AsyncElasticsearch) -> list[CorrelationAlert]:
+async def run_correlation_scan(es_client: AsyncElasticsearch, source_ip: str | None = None, host: str | None = None) -> list[CorrelationAlert]:
     """
         Exécute un cycle complet de corrélation sur la fenêtre de temps générale en récupérant les logs récents, appliquant toutes les règles actives, indexant
          les alertes et logs de détection produits, déclenchant les blocages applicables.
@@ -132,7 +132,9 @@ async def run_correlation_scan(es_client: AsyncElasticsearch) -> list[Correlatio
     """
     window = await _fetch_recent_logs(
         es_client,
-        window_seconds=settings.correlation_brute_force_window_seconds
+        window_seconds=settings.correlation_brute_force_window_seconds,
+        source_ip=source_ip,
+        host=host,
     )
 
     business_hours_config = get_business_hours_config(es_client)

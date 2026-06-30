@@ -27,4 +27,27 @@ class CommunicationBannedRule(CorrelationRule):
             source_ip = log.get("source_ip")
             host = log.get("host")
 
-            if not source_ip and not host
+            if not source_ip and not host:
+                continue
+
+            #   Vérification asynchrone de la quarantaine pour la source et la destination
+            is_source_locked = False
+            is_host_locked = False
+
+            if source_ip:
+                is_source_locked = await is_entity_locked(self._es_client, entity_type="source_ip", entity_value=source_ip)
+
+            if host:
+                is_host_locked = await is_entity_locked(self._es_client, entity_type="host", entity_value=host)
+
+            if is_source_locked or is_host_locked:
+                locked_entity = source_ip if is_source_locked else host
+                direction = "depuis" if is_source_locked else "vers"
+
+                alerts.append(
+                    CorrelationAlert(
+                        rule_name=self.name,
+                        severity="WARNING",
+                        decription=(f"Tentative de communication détectée vers une source bannie ({locked_entity})")
+                    )
+                )

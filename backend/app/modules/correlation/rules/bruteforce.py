@@ -98,7 +98,6 @@ class BruteForceRule(CorrelationRule):
         #   On ne s'interesse qu'aux logs de type "auth": Même un échec classé "info" par la table tag->severity doit être compté ici,
         #    comme c'est précisement la répétition de logs individuellement bénins qui constitue le signal recherché par cette règle.
         auth_failures = [log for log in window.logs if log.get("log_type") == "auth"]
-
         alerts: list[CorrelationAlert] = []
 
         #   --------    Comptage par IP source  --------
@@ -107,7 +106,7 @@ class BruteForceRule(CorrelationRule):
             source_ip = log.get("source_ip")
             if source_ip:
                 failures_by_ip[source_ip].append(log)
-        alerts.extends(self._evaluate_group(failures_by_ip, "source_ip"))
+        alerts.extend(self._evaluate_group(failures_by_ip, "source_ip"))
 
         #   --------    Comptage par host visé (indépendamment du comptage par IP)  --------
         #   Détecte une attaque distribuée: Plusieurs IP différentes ciblant la même machine, qui ne déclencherait jamais le comptage IP d'avant
@@ -116,6 +115,6 @@ class BruteForceRule(CorrelationRule):
             host = log.get("host")
             if host:
                 failures_by_host[host].append(log)
-        alerts.extends(self._evaluate_group(failures_by_host), "host")
+        alerts.extend(self._evaluate_group(failures_by_host), "host")
 
         return alerts
