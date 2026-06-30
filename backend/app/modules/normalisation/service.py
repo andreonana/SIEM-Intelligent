@@ -24,7 +24,7 @@ from app.modules.normalisation.parsers.json_parser import JSONLogParser
 from app.modules.normalisation.parsers.registry import parser_registry
 from app.modules.normalisation.tagging import determine_log_type
 from app.modules.normalisation.tag_severity_service import get_tag_severity_table, determine_severity_from_tags
-from backend.app.modules.rbac.field_visibility import NORMALIZATION_FIELDS
+from app.modules.rbac.field_visibility import NORMALIZATION_FIELDS
 
 @dataclass
 class NormalizedLog:
