@@ -1,0 +1,68 @@
+[
+  {
+    "id": "ALT-001",
+    "timestamp": "2026-06-24 04:15:22",
+    "severity": "CRITICAL",
+    "source": "194.26.29.84",
+    "service": "Apache Web Server",
+    "event": "Attaque par Déni de Service (DDoS) - Pic anormal de trafic réseau atteignant 45 000 requêtes/seconde depuis de multiples adresses IP externes ciblées sur le Serveur Web Principal.",
+    "status": "EN_COURS",
+    "escalated": true,
+    "payload": "{\n  \"network\": {\n    \"packets_per_sec\": 45000,\n    \"bandwidth_mbps\": 850,\n    \"protocol\": \"TCP_SYN\"\n  },\n  \"target_host\": \"srv-web-prod-01\",\n  \"incident_type\": \"Flood SYN DDoS\",\n  \"playbook_status\": \"En attente de validation\"\n}"
+  },
+  {
+    "id": "ALT-002",
+    "timestamp": "2026-06-24 04:04:10",
+    "severity": "CRITICAL",
+    "source": "10.0.4.15",
+    "service": "DNS Core",
+    "event": "Exfiltration suspecte de données via DNS - Transfert volumineux de paquets chiffrés encapsulés dans des requêtes de noms de domaines externes non vérifiés depuis la Base de Données RH.",
+    "status": "EN_COURS",
+    "escalated": true,
+    "payload": "{\n  \"dns\": {\n    \"query_type\": \"TXT\",\n    \"bytes_sent\": 142000000,\n    \"suspicious_domains\": [\"malicious-tunnel-dns.xyz\", \"cc-server.net\"]\n  },\n  \"source_host\": \"db-hr-prod\",\n  \"incident_type\": \"DNS Tunneling / Data Exfiltration\"\n}"
+  },
+  {
+    "id": "ALT-003",
+    "timestamp": "2026-06-24 03:56:45",
+    "severity": "WARNING",
+    "source": "45.142.120.9",
+    "service": "SSH Gateway",
+    "event": "Tentative de Brute-Force SSH détectée - Plus de 50 tentatives de connexion infructueuses détectées sur le port 22 en moins de 60 secondes sur la Passerelle Interne.",
+    "status": "TRAITÉ",
+    "escalated": false,
+    "payload": "{\n  \"ssh\": {\n    \"attempt_count\": 54,\n    \"failed_user_targets\": [\"root\", \"admin\", \"ubnt\"],\n    \"port\": 22\n  },\n  \"action_taken\": \"IP_BANNED_FAIL2BAN\",\n  \"target_host\": \"gateway-internal-01\"\n}"
+  },
+  {
+    "id": "ALT-004",
+    "timestamp": "2026-06-24 04:20:15",
+    "severity": "CRITICAL",
+    "source": "10.0.12.88",
+    "service": "Active Directory",
+    "event": "Comportement de type Ransomware (Activité suspecte de chiffrement de masse) détecté sur le serveur de fichiers partagés de la Comptabilité.",
+    "status": "EN_COURS",
+    "escalated": true,
+    "payload": "{\n  \"file_system\": {\n    \"modified_files_count\": 1240,\n    \"operation_type\": \"RENAME_AND_ENCRYPT\",\n    \"extension_target\": \".locked\",\n    \"process_name\": \"vssadmin.exe / shadow copy delete\"\n  },\n  \"source_host\": \"srv-file-compta\",\n  \"incident_type\": \"Ransomware / Mass File Encryption\"\n}"
+  },
+  {
+    "id": "ALT-005",
+    "timestamp": "2026-06-24 04:18:02",
+    "severity": "CRITICAL",
+    "source": "185.220.101.5",
+    "service": "Azure Active Directory",
+    "event": "Accès impossible détecté (Impossible Travel) - Connexion réussie de l'administrateur depuis Paris (France) puis 10 minutes plus tard depuis une IP de nœud de sortie Tor.",
+    "status": "NON_TRAITÉ",
+    "escalated": false,
+    "payload": "{\n  \"identity\": {\n    \"user_principal_name\": \"admin-cloud@entreprise.com\",\n    \"authentication_method\": \"Session_Cookie_Reuse\",\n    \"locations\": [\"Paris, FR\", \"Tor_Exit_Node_Unknown\"]\n  },\n  \"service_provider\": \"Microsoft_Entra_ID\",\n  \"incident_type\": \"Account Takeover / Session Hijacking\"\n}"
+  },
+  {
+    "id": "ALT-006",
+    "timestamp": "2026-06-24 03:45:12",
+    "severity": "WARNING",
+    "source": "89.248.165.44",
+    "service": "Nginx Reverse Proxy",
+    "event": "Scan de vulnérabilités automatisé (Reconnaissance offensive globale) - Détection de 350 requêtes HTTP 404 cherchant des fichiers de configuration sensibles (.git, .env, wp-login.php).",
+    "status": "FAUX_POSITIF",
+    "escalated": false,
+    "payload": "{\n  \"http_request\": {\n    \"user_agent\": \"Mozilla/5.0 (compatible; Nmap Scripting Engine)\",\n    \"probed_paths\": [\"/.env\", \"/wp-admin/\", \"/.git/config\", \"/phpmyadmin/\"],\n    \"response_code\": 404\n  },\n  \"target_host\": \"proxy-nginx-ext\",\n  \"incident_type\": \"Web Reconnaissance / Directory Traversal Attempt\"\n}"
+  }
+]
