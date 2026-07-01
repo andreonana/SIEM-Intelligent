@@ -6,7 +6,7 @@
 # ============================================================
 
 from fastapi import Depends, HTTPException, status
-# from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials
 
 from app.modules.rbac.auth import decode_access_token, bearer_scheme
 

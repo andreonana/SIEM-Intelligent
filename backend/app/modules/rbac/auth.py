@@ -20,7 +20,7 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from elasticsearch import Elasticsearch
+from elasticsearch import AsyncElasticsearch
 
 from app.core.config import settings
 
@@ -109,41 +109,77 @@ def decode_access_token(token: str) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-def login(es_client: Elasticsearch, username: str, password: str):
-    response = es_client.search(
-        index="users",
-        body={
-            "query": {
-                "term": {"username.keyword": username}
-            }
-        }
-    )
-
-    hits = response["hits"]["hits"]
-
-    if not hits:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
-        )
-
-    token = create_access_token(
-        user_id=hits[0]["id"],
-        username=hits[0]["username"],
-        role=hits[0]["role"],
-    )
-
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "id": hits[0]["id"],
-            "username": hits[0]["username"],
-            "role": hits[0]["role"],
-        }
-    }
-
 # ── Bearer Token Extractor ────────────────────────────────
 # This tells FastAPI to look for the token in the
 # "Authorization: Bearer <token>" header of every request
 bearer_scheme = HTTPBearer()
+
+
+# ── Recherche utilisateur ──────────────────────────────────
+async def find_user_by_username(es_client: AsyncElasticsearch, username: str) -> dict | None:
+    """
+    Recherche un utilisateur par son username dans l'index Elasticsearch dédié.
+ 
+    Retourne None si aucun utilisateur ne correspond à ce username, plutôt que de lever une
+     exception — c'est le même principe que get_log_by_id() dans le module d'ingestion:
+     l'absence d'un enregistrement n'est pas une erreur technique, c'est un résultat de recherche
+     valide que l'appelant (login() ci-dessous) doit pouvoir distinguer d'une vraie panne.
+ 
+    Retourne un dictionnaire {"username": ..., "hashed_password": ..., "role": ...} si trouvé.
+    """
+    try:
+        response = await es_client.get(
+            index=settings.es_index_users,
+            id=username,
+        )
+    except Exception:
+        #   Le client elasticsearch lève une exception (NotFoundError) quand le document
+        #    demandé n'existe pas dans l'index — username inconnu, ou index pas encore créé
+        #    (aucun utilisateur déclaré à ce jour). Les deux cas se traduisent de la même façon
+        #    pour l'appelant: "aucun utilisateur correspondant".
+        return None
+ 
+    return response["_source"]
+ 
+# ── Connexion (login) ──────────────────────────────────────
+async def login(username: str, password: str, es_client: AsyncElasticsearch) -> str:
+    """
+    Authentifie un utilisateur à partir de son username et de son mot de passe en clair.
+ 
+    Déroulement:
+        1. Recherche l'utilisateur correspondant au username dans Elasticsearch.
+        2. Si aucun utilisateur ne correspond, OU si le mot de passe fourni ne correspond pas
+           au hash stocké, lève une HTTPException 401 — le même message générique est utilisé
+           dans les deux cas ("Identifiant ou mot de passe incorrect"), pour ne jamais révéler
+           à un attaquant si c'est le username ou le password qui est en cause.
+        3. Si tout est valide, construit et retourne un token JWT signé pour cet utilisateur.
+ 
+    Paramètres:
+        username:  Identifiant fourni par l'appelant (formulaire de connexion).
+        password:  Mot de passe en clair fourni par l'appelant, jamais stocké tel quel.
+        es_client: Client Elasticsearch asynchrone partagé, injecté par l'appelant (typiquement
+                   via Depends(get_es_client) au niveau du routeur HTTP), jamais construit ici —
+                   cohérent avec le reste du projet où aucune fonction de service ne connaît la
+                   connexion Elasticsearch elle-même.
+ 
+    Retourne le token JWT signé (string), prêt à être renvoyé tel quel dans la réponse HTTP.
+ 
+    Lève une HTTPException 401 si l'authentification échoue (utilisateur inconnu ou mot de passe
+     incorrect).
+    """
+    user_record = await find_user_by_username(es_client, username)
+ 
+    if user_record is None or not verify_password(password, user_record["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Identifiant ou mot de passe incorrect.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+ 
+    #   Le username sert lui-même d'identifiant unique (_id du document ES), donc de "user_id"
+    #    du token — cohérent avec la structure de document décrite en en-tête de ce fichier.
+    return create_access_token(
+        user_id=username,
+        username=user_record["username"],
+        role=user_record["role"],
+    )
