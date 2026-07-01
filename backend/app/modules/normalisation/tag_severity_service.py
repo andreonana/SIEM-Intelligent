@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from elasticsearch import AsyncElasticsearch
 
 from app.core.config import settings
-from app.modules.correlation.lifecycle_service import SERVICE_LIFECYCLE_TAG
 
 #   Hiérarchie du niveau de severity, du plus élevé au plus faible.
 SEVERITY_HIERARCHY = ["critical", "warning", "info"]
@@ -196,7 +195,7 @@ async def _apply_tag_severity_change(es_client:AsyncElasticsearch, severity: str
     #    de doublons ou incohérence entre plusieurs documents concurrents pour le même niveau.
     try:
         existing = await es_client.get(index=settings.es_tag_severity_index_name, id=severity)
-        current_tags = set(existing["_source"].get("tabgs", []))
+        current_tags = set(existing["_source"].get("tags", []))
     except Exception:
         current_tags = set()
 
@@ -228,7 +227,7 @@ async def _write_audit_log(
     """
     action_label = "ajouté à" if action == "add" else "retiré de"
 
-    raw_message = (f"Mise à jour de la table tag->severity. Demande effecturé le {requested_at.isoformat()} par '{requested_by_username}'. Validée le {reviewed_at.isoformat()} par '{reviewed_by_username}'. Le tag '{tag}' aété {action_label} au niveau de severité '{severity}'.")
+    raw_message = (f"Mise à jour de la table tag->severity. Demande effecturé le {requested_at.isoformat()} par '{requested_by_username}'. Validée le {reviewed_at.isoformat()} par '{reviewed_by_username}'. Le tag '{tag}' a été {action_label} au niveau de severité '{severity}'.")
     document = {
         "timestamp": reviewed_at.isoformat(),
         "source_ip": requested_by_username,

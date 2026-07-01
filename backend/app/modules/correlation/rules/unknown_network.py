@@ -21,7 +21,7 @@ class UnknownNetworkRule(CorrelationRule):
 
     @property
     def name(self) -> str:
-        return "unknown network"
+        return "unknown_network"
 
     def evaluate(self, window: LogWindow) -> list[CorrelationAlert]:
         if not self._inventory.get("enabled", False):
@@ -45,20 +45,20 @@ class UnknownNetworkRule(CorrelationRule):
         for log in unknown_logs:
             grouped[(log["source_ip"], log["host"])].append(log)
 
-            alerts: list[CorrelationAlert] = []
-            for (source_ip, host), logs in grouped.items():
-                alerts.append(
-                    CorrelationAlert(
-                        rule_name=self.name,
-                        severity="WARNING",
-                        description=(f"Connexion détectée depuis une source absente de l'inventaire réseau connu: {source_ip} -> {host}."),
-                        source_ip=source_ip,
-                        host=host,
-                        related_log_ids=[log["id"] for log in logs],
-                        generated_log_severity="warning",
-                        generated_log_tags=[UNKNOWN_NETWORK_TAG],
-                        triggers_lockout=False,
-                    )
+        alerts: list[CorrelationAlert] = []
+        for (source_ip, host), logs in grouped.items():
+            alerts.append(
+                CorrelationAlert(
+                    rule_name=self.name,
+                    severity="WARNING",
+                    description=(f"Connexion détectée depuis une source absente de l'inventaire réseau connu: {source_ip} -> {host}."),
+                    source_ip=source_ip,
+                    host=host,
+                    related_logs_ids=[log["id"] for log in logs if log.get("id")],
+                    generated_log_severity="warning",
+                    generated_log_tags=[UNKNOWN_NETWORK_TAG],
+                    triggers_lockout=False,
                 )
+            )
 
         return alerts

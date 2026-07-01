@@ -60,7 +60,7 @@ async def _index_alert(alert: CorrelationAlert, es_client: AsyncElasticsearch) -
         "description":      alert.description,
         "source_ip":        alert.source_ip,
         "host":             alert.host,
-        "relanted_log_ids": alert.related_log_ids,
+        "related_log_ids":  alert.related_log_ids,
         "detected_at":      alert.detected_at.isoformat(),
         "status":           "ouvert",
     }
@@ -81,7 +81,7 @@ async def _index_generated_log(alert: CorrelationAlert, es_client: AsyncElastics
         "severity":         alert.generated_log_severity,
         "raw_message":      alert.description,
         "tags":             alert.generated_log_tags,
-        "received_at":      alert.detect_at.isoformat(),
+        "received_at":      alert.detected_at.isoformat(),
     }
 
     await es_client.index(index=settings.es_logs_index_name, document=document)
@@ -137,7 +137,7 @@ async def run_correlation_scan(es_client: AsyncElasticsearch, source_ip: str | N
         host=host,
     )
 
-    business_hours_config = get_business_hours_config(es_client)
+    business_hours_config = await get_business_hours_config(es_client)
 
     all_alerts: list[CorrelationAlert] = []
     for rule in get_active_rules(business_hours_config):
@@ -164,7 +164,7 @@ async def evaluate_for_source(es_client: AsyncElasticsearch, source_ip: str | No
 
     all_alerts: list[CorrelationAlert] = []
     for rule in get_active_rules(get_business_hours_config):
-        all_alerts.etend(rule.evaluate(window))
+        all_alerts.extend(rule.evaluate(window))
 
     await _process_alerts(all_alerts, es_client)
 
@@ -183,7 +183,7 @@ def should_trigger_immediate_scan(log_type: str, severity: str, tags: list[str])
     if log_type == "auth":
         return True
 
-    if severity == settings.correlation_immediate_trigger_severity:
+    if severity in settings.correlation_immediate_trigger_severity:
         return True
     
     trigger_tags = set(settings.correlation_immediate_trigger_tags)

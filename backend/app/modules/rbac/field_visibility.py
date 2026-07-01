@@ -10,10 +10,6 @@
 #    fragile et plus facile à oublier.
 #
 #   Champ exacts produits par le module de normalisation. C'est la liste EXHAUSTIVE et UNIQUE de ce qu'un reader peut voir et filtrer
-from pydoc import doc
-
-from app.modules.rbac import retention
-
 
 NORMALIZATION_FIELDS = {
     "timestamp",

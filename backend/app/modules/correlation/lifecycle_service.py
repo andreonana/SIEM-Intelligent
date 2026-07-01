@@ -16,7 +16,6 @@
 #    nécessairement depuis un log d'arrêt explicite. C'est une limite structurelle honnête à connaître: Aucun système ne peut garantir qu'un processus tué 
 #    brutalement ait le temps d'écrie quoi que ce soit avant de s'arrêter.
 
-from ast import expr_context
 from datetime import datetime, timezone
 
 from elasticsearch import AsyncElasticsearch
@@ -32,14 +31,14 @@ async def log_service_shutdown(es_client: AsyncElasticsearch) -> None:
     now = datetime.now(timezone.utc)
 
     document = {
-        "timestamp": now.isoformat(),
-        "source_ip": "system",
-        "host": "smart-siem-backend",
-        "log_type": "système",
-        "severity": "critical",
+        "timestamp":    now.isoformat(),
+        "source_ip":    "system",
+        "host":         "smart-siem-backend",
+        "log_type":     "système",
+        "severity":     "critical",
         "raw_message":  (f"Arrêt du service de journalisation Smart SIEM à {now.isoformat()}. Aucun log ne sera collecté jusqu'au prochain démarrage."),
-        "tags": [SERVICE_LIFECYCLE_TAG],
-        "received_at": now.isoformat(), 
+        "tags":         [SERVICE_LIFECYCLE_TAG],
+        "received_at":  now.isoformat(), 
     }
 
     try:
@@ -62,20 +61,20 @@ async def log_service_startup(es_client: AsyncElasticsearch) -> None:
         downtime_seconds = (now - last_timestamp).total_seconds()
         downtime_message = (f"Durée d'indisponibilité depuis le dernier évènement de cycle de vie connu ({last_timestamp.isoformat()}): {downtime_seconds:.0f} secondes.")
     elif last_timestamp_log is not None:
-        downtime_seconds = (now - last_timestamp_log)
+        downtime_seconds = (now - last_timestamp_log).total_seconds()
         downtime_message = (f"Durée d'indisponibilité depuis le dernier évènement du cycle de vie connu ({last_timestamp_log.isoformat()}): {downtime_seconds:.0f} secondes.")
     else:
         downtime_message = ("Aucun évènement de cycle de vie extérieur trouvé. Probablement le premier démarrage du système.")
 
     document = {
-        "timestamp": now.isoformat(),
-        "source_ip": "system",
-        "host": "smart-siem-backend",
-        "log_type": "système",
-        "severity": "critical",
-        "raw_message": (f"Démarrage du service de journalisation Smart SIEM à {now.isoformat()}. {downtime_message}."),
-        "tags": [SERVICE_LIFECYCLE_TAG],
-        "received_at": now.isoformat(),
+        "timestamp":    now.isoformat(),
+        "source_ip":    "system",
+        "host":         "smart-siem-backend",
+        "log_type":     "système",
+        "severity":     "critical",
+        "raw_message":  (f"Démarrage du service de journalisation Smart SIEM à {now.isoformat()}. {downtime_message}."),
+        "tags":         [SERVICE_LIFECYCLE_TAG],
+        "received_at":  now.isoformat(),
     }
 
     try:
@@ -114,6 +113,7 @@ async def _find_last_log_timestamp(es_client: AsyncElasticsearch) -> datetime | 
     try:
         response = await es_client.search(
             index=settings.es_logs_index_name,
+            query={"match_all": {}},
             sort=[{"timestamp": {"order": "desc"}}],
             size=1,
         )

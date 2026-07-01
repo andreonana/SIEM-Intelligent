@@ -18,7 +18,7 @@ async def get_network_inventory(es_client: AsyncElasticsearch) -> dict:
         Retourne une structure désactivée par défaut (enabled=False) si aucun inventaire n'a encore été déclaré; cohérent avec le même principe que 
          business_hours_service.get_business_hours_config().
     """
-    default_inventory = {"enabled": False, "know_hosts": [], "kwonw_ips": []}
+    default_inventory = {"enabled": False, "known_hosts": [], "kwown_ips": []}
 
     try:
         response = await es_client.get(
@@ -50,6 +50,43 @@ async def update_network_inventory(
     )
     return inventory
 
+async def add_to_inventory(
+    es_client:  AsyncElasticsearch,
+    host:       str | None = None,
+    ip:         str | None = None,
+) -> dict:
+    """
+    Ajoute un host ou une IP à l'inventaire existant sans écraser le reste.
+    Utile pour des ajouts ponctuels sans avoir à renvoyer la liste complète.
+    """
+    inventory = await get_network_inventory(es_client)
+ 
+    known_hosts: list[str] = inventory.get("known_hosts", [])
+    known_ips:   list[str] = inventory.get("known_ips", [])
+ 
+    if host and host not in known_hosts:
+        known_hosts.append(host)
+    if ip and ip not in known_ips:
+        known_ips.append(ip)
+ 
+    return await update_network_inventory(es_client, known_hosts, known_ips)
+ 
+ 
+async def remove_from_inventory(
+    es_client: AsyncElasticsearch,
+    host:      str | None = None,
+    ip:        str | None = None,
+) -> dict:
+    """
+    Retire un host ou une IP de l'inventaire sans écraser le reste.
+    """
+    inventory = await get_network_inventory(es_client)
+ 
+    known_hosts = [h for h in inventory.get("known_hosts", []) if h != host]
+    known_ips   = [i for i in inventory.get("known_ips",   []) if i != ip]
+ 
+    return await update_network_inventory(es_client, known_hosts, known_ips)
+
 def is_known_source(source_ip: str, host: str, inventory: dict) -> bool:
     """
         Détermine si une source (IP et host) fait partie de l'inventaire réseau connu.
@@ -62,4 +99,4 @@ def is_known_source(source_ip: str, host: str, inventory: dict) -> bool:
     if not inventory.get("enabled", False):
         return True
 
-    return source_ip in inventory.get("known_ips", []) or host in inventory.get("known_hosts", [])
+    return (source_ip in inventory.get("known_ips", []) or host in inventory.get("known_hosts", []))

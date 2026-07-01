@@ -67,7 +67,7 @@ class BusinessHoursRule(CorrelationRule):
                     severity="CRITICAL",
                     description=description,
                     host=host,
-                    related_log_ids=[log["id"] for log in logs],
+                    related_logs_ids=[log["id"] for log in logs if log.get["id"]],
                     generated_log_severity="critical",
                     generated_log_tags=[BUSINESS_HOURS_VIOLATION_TAG],
                     triggers_lockout=True,
@@ -90,15 +90,15 @@ class BusinessHoursRule(CorrelationRule):
                 related_ids = [
                     log["id"]
                     for log in violations
-                    if log.get("source_ip") == source_ip
+                    if log.get("source_ip") == source_ip and log.get("id")
                 ]
                 alerts.append(
                     CorrelationAlert(
                         rule_name=self.name,
                         severity="CRITICAL",
-                        description=(f"La source {source_ip} a établi des connexions hors horaire de travail sur {len(hosts)} machines distinctes ({', '.join(sorted(hosts))}). Sourece bloquée du réseau."),
+                        description=(f"La source '{source_ip}' a établi des connexions hors horaire de travail sur {len(hosts)} machines distinctes ({', '.join(sorted(hosts))}). Sourece bloquée du réseau."),
                         source_ip=source_ip,
-                        related_log_ids=related_ids,
+                        related_logs_ids=related_ids,
                         generated_log_severity="critical",
                         generated_log_tags=[BUSINESS_HOURS_VIOLATION_TAG],
                         triggers_lockout=True,

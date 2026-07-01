@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     rate_limit_window_seconds:  int = 60
 
     #   ----------------------------------------------------------------------------------------
+    #       SECTION:    JWT
+    #   ----------------------------------------------------------------------------------------
+
+    jwt_secret:                 str = "dev-only-change-me"
+    jwt_algorithm:              str = "HS256"
+    jwt_expiry_minutes:         int = 60
+
+    #   ----------------------------------------------------------------------------------------
     #       SECTION:    Table tag -> severity
     #   ----------------------------------------------------------------------------------------
 
@@ -80,6 +88,97 @@ class Settings(BaseSettings):
 
     #   Nom de l'index contenant les demandes de modification de la table tag -> severity, avec leur statut (en attente, validée, rejetée)
     es_tag_severity_update_index_name:  str = "smart-siem-tag-severity-update"
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:    KEYWORD DE RECONNAISSANCE DE SEVERITY PAR DEFAUT (INITIAUX)
+    #   ----------------------------------------------------------------------------------------
+
+    #   Critical keywords / keywords de niveau de severity critical
+    critical_keywords:                  list[str] = [
+        #   Authentification
+        "brute force",
+        "credential stuffing",
+        "password spray",
+        "POSSIBLE BREAK-IN",
+        "repeated login failures",
+        #   Malwares / intrusion
+        "malware",
+        "ransomware",
+        "exploit",
+        "rootkit",
+        "backdoor",
+        "trojan",
+        "keylogger",
+        "crypto miner",
+        "cryptominer",
+        #   Commande et contrôle
+        "command and control",
+        "c2 beacon",
+        "reverse shell",
+        "bind shell",
+        #   Privilèges et accès non authorisé
+        "privilege escalation",
+        "unauthorized access",
+        "illegal access",
+        "sudo su -",
+        "system compromised",
+        "intrusion detected",
+        #   Exfiltration
+        "data exfiltration",
+        "large upload",
+        "bulk download",
+        #   Réseau offensif
+        "port scan",
+        "arp spoofing",
+        "dns poisoning",
+        "man in the middle",
+        #   Système critique
+        "kernel panic",
+        "system failure",
+        "emergency",
+    ]
+
+    #   Warning keywords / Keywords de niveau warning
+    warning_keywords:                       list[str] = [
+        #   Echecs d'authentification simple
+        "failed password",
+        "authentication failure",
+        "authentication error",
+        "invalid user",
+        "invalide credentials",
+        "login failed",
+        "logon failure",
+        "access denied",
+        "permission denied",
+        #   Réseau
+        "connection refused",
+        "connection reset",
+        "firewall deny",
+        "firewall blocked",
+        "port blocked",
+        "suspicious traffic",
+        "unknown source",
+        #   TLS / certificats
+        "certificate expired",
+        "sel error",
+        "ssl warning",
+        "tls handshake failed",
+        #   Ressource système
+        "disk full",
+        "low memory",
+        "high cpu",
+        "swap usage high",
+        #   Services
+        "service restarted",
+        "daemon crash",
+        "timeout",
+        "retry limit",
+        #   Générique
+        "suspicious",
+        "anomaly",
+        "unusual activity",
+        "decprecated",
+    ] 
 
     #   ----------------------------------------------------------------------------------------
     #       SECTION:    Moteur de corrélation
@@ -106,7 +205,6 @@ class Settings(BaseSettings):
         "failed password",
         "authentication failure",
         "outside hours",
-        "port scan",
         "communication banned",
         "log hidden",
         "unknown network",
@@ -147,6 +245,8 @@ class Settings(BaseSettings):
         "teamviewer",
         "psexec",
         "ammyy",
+        "radmin",
+        "vnc",
     ]
 
     #   Seuil de volume de données téléchargées au delà duquel le téléchargement est considéré comme massif.
@@ -160,10 +260,17 @@ class Settings(BaseSettings):
     correlation_port_scan_threshold:            int = 15
 
     #   Nombre d'hosts distincts contactés depuis une même source
-    correlation_worl_propagation_threshold:     int = 10
+    correlation_world_propagation_threshold:     int = 10
 
     #   Nombre de requêtes DNS distinctes depuis une même source
     correlation_dns_anomaly_threshold:          int = 100
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:    RETENTION DES LOGS
+    #   ----------------------------------------------------------------------------------------
+
+    #   Nombre total de jours au-delà duquel les logs sont supprimés automatiquement.
+    retention_days:                             int = 30
 
     #   model_config configure comment Pydantic Settings lit les variables d'environnement.
     #       - env_file=".env" indique où se trouve le fichier .env partagé à la racine du projet backend.

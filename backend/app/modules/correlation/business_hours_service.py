@@ -53,12 +53,15 @@ async def update_business_hours_config(
         Met à jour la configuration globale des horaires de travail.
         Réservé à un admin; vérification du rôle faite au niveau du routeur HTTP.
     """
+    if time.fromisoformat(closing_time) <= time.fromisoformat(opening_time):
+        raise ValueError(f"L'heure de fermeture ({closing_time}) doit être postérieure/supérieurs ) celle d'ouverture ({opening_time}).")
+
     config = await get_business_hours_config(es_client)
     config.update(
         {
             "enabled": True,
             "working_days": working_days,
-            "opentin_time": opening_time,
+            "opening_time": opening_time,
             "closing_time": closing_time,
         }
     )
@@ -105,6 +108,23 @@ async def add_exception(
     )
     return config
 
+async def remove_exception(es_client: asyncElasticsearch, exception_date: str,) -> dict:
+    """
+        Supprime une exception ponctuelle pour une date précise.
+        Rôle: admin ou plus
+    """
+    config = await get_business_hourd_config(es_client)
+    exceptions = config.get("exceptions", {})
+    exceptions.pop(exception_date, None)
+    config["exceptions"] = exceptions
+
+    await es_client.index(
+        index=settings.es_business_hours_index_name,
+        id=_CONFIG_DOCUMENT_ID,
+        document=config,
+    )
+    return config
+
 def is_within_business_hours(log_timestamp: datetime, config: dict) -> bool:
     """
         Détermine si un horodatage de log se situe dans les horaires de travail configurés, en tenant compte des exceptions
@@ -138,7 +158,10 @@ def is_within_business_hours(log_timestamp: datetime, config: dict) -> bool:
     if local_time.weekday() not in config.get("working_days", []):
         return False
 
-    if config.get("opening_time") is None or config.get("closing_time") is None:
+    opening_str = config.get("opening_time")
+    closing_str = config.get("closing_time")
+
+    if opening_str is None or closing_str is None:
         #   Aucun horaire normal n'a été défini pour les jours ouvrés déclarés (cas incohérent, coniguration incomplète): par prudence,
         #    on considère qu'aucune restriction horaire ne s'applique plutôt que de risquer un comportement imprévisible.
         return True

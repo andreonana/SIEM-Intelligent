@@ -29,14 +29,14 @@ async def list_logs(es_client: AsyncElasticsearch, page: int = 1, page_size: int
         from_=from_offset,
         size=page_size,
         sort=[{"timestamp": {"order": "desc"}}],                #   Sortie décroissante (du plus récent au moins récent)
-        query={"matxh_all": {}},
+        query={"match_all": {}},
     )
 
     hits = response["hits"]["hits"]
     total = response["hits"]["total"]["value"]
 
     logs = [
-        {"id": hit["_id"], **hit["source"]}
+        {"id": hit["_id"], **hit["_source"]}
         for hit in hits
     ]
     #   Fusionne l'identifiant du document (_id, propre à Elasticsearch) avec son contenu (_source, les champs normalisés indexés)

@@ -6,17 +6,17 @@
 # ============================================================
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials
+# from fastapi.security import HTTPAuthorizationCredentials
 
 from app.modules.rbac.auth import decode_access_token, bearer_scheme
 
 # ── Role Hierarchy ────────────────────────────────────────
 # Higher number = more permissions
 # An administrator (3) can do everything a reader (1) can do
-ROLE_LEVELS = {
-    "reader": 1,
-    "analyst": 2,
-    "administrator": 3
+ROLE_LEVELS: dict[str, int] = {
+    "reader":           1,
+    "analyst":          2,
+    "administrator":    3,
 }
 
 # ── Current User Extractor ────────────────────────────────
@@ -38,13 +38,13 @@ def get_current_user(
     payload = decode_access_token(token)
     
     return {
-        "user_id": payload["sub"],
+        "user_id":  payload["sub"],
         "username": payload["username"],
-        "role": payload["role"]
+        "role":     payload["role"]
     }
 
 # ── Role Enforcement ──────────────────────────────────────
-def require_role(minimum_role: str):
+def require_role(minimum_role: str | list[str]):
     """
     Protects an endpoint by requiring a minimum role level.
     
@@ -70,8 +70,8 @@ def require_role(minimum_role: str):
     The 'user' variable always contains the current user's info,
     which the backend dev can use for audit logging.
     """
-    def check_role(user: dict = Depends(get_current_user)):
-        user_role = user["role"]
+    def check_role(user: dict = Depends(get_current_user)) -> dict:
+        user_role:  str = user["role"]
 
         if isinstance(minimum_role, list):
             #   *** Mode liste explicite (extension backend dev)    ***
@@ -81,18 +81,18 @@ def require_role(minimum_role: str):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(f"Access denied. Requires one of {minimum_role}. "
-                    f"Your role: '{user.role}'."),
+                    f"Your role: '{user_role}'."),
                 )
             #   *** Mode hiérarchique original inchangé.
 
-        user_level = ROLE_LEVELS.get(user["role"], 0)
-        required_level = ROLE_LEVELS.get(minimum_role, 99)
+        user_level =        ROLE_LEVELS.get(user["role"], 0)
+        required_level =    ROLE_LEVELS.get(minimum_role, 99)
         
         if user_level < required_level:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. Requires '{minimum_role}' role or higher. "
-                       f"Your role: '{user['role']}'"
+                       f"Your role: '{user_role}'"
             )
         return user  # Pass user info to the endpoint function
     

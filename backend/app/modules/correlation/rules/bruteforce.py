@@ -50,8 +50,8 @@ class BruteForceRule(CorrelationRule):
         Une tranche incomplète (moins d'échecs que le seuil) en fin de liste n'est jamais retourné: Elle ne constitue pas encore une détection, elle pourra
          le devenir lors du prochain cycle si d'autres échecs s'ajoutent.
         """
-        threshold = settings.correlation_brute_force_threshold
-        sorted_logs = sorted(logs, key=lambda log:log.get("timestamp", ""))
+        threshold   = settings.correlation_brute_force_threshold
+        sorted_logs = sorted(logs, key=lambda log: log.get("timestamp", ""))
 
         tranches = []
         for start in range(0, len(sorted_logs) - threshold + 1, threshold):
@@ -70,11 +70,13 @@ class BruteForceRule(CorrelationRule):
                 elapsed_seconds = _seconds_between(tranche)
                 if elapsed_seconds <= settings.correlation_brute_force_window_seconds:
                     #   Scénario "script automatisé": 5 échecs dans la fenêtre de temps configurée (60 secondes par défaut), non-humain
+                    alert_severity = "CRITICAL"
                     log_severity = "critical"
                     description = (f"{len(tranche)} échecs d'authentifications détectées depuis {group_field}={group_value} en seulement {elapsed_seconds:.0f} secondes. Signature d'un script automatisé.")
                 else:
                     #   Scénario "erreurs humaines répétées": 5 échecs, mais étalées sur plus de temps que la fenêtre configurée. Plus
                     #    probablement un humain qui se trompe de champ d'autehntification plusieurs fois.
+                    alert_severity = "WARNING"
                     log_severity = "warning"
                     description = (
                         f"{len(tranche)} échecs d'authentification détectées depuis {group_field}={group_value} en {elapsed_seconds:.0f} secondes. Probablement des erreurs répétées ayant atteint le seul de blocage." 
@@ -82,11 +84,11 @@ class BruteForceRule(CorrelationRule):
 
                 alert_kwargs = {
                     "rule_name": self.name,
-                    "severity": "CRITICAL" if log_severity == "critical" else "WARNING",
+                    "severity": alert_severity,
                     "description": description,
                     "related_logs_ids": [log["id"] for log in tranche],
                     "generated_log_severity": log_severity,
-                    "generate_log_tags": [BRUTEFORCE_DETECTION_TAG],
+                    "generated_log_tags": [BRUTEFORCE_DETECTION_TAG],
                     "triggers_lockout": True,
                 }
                 alert_kwargs[group_field] = group_value
@@ -106,6 +108,7 @@ class BruteForceRule(CorrelationRule):
             source_ip = log.get("source_ip")
             if source_ip:
                 failures_by_ip[source_ip].append(log)
+
         alerts.extend(self._evaluate_group(failures_by_ip, "source_ip"))
 
         #   --------    Comptage par host visé (indépendamment du comptage par IP)  --------
@@ -115,6 +118,7 @@ class BruteForceRule(CorrelationRule):
             host = log.get("host")
             if host:
                 failures_by_host[host].append(log)
-        alerts.extend(self._evaluate_group(failures_by_host), "host")
+
+        alerts.extend(self._evaluate_group(failures_by_host, "host"))
 
         return alerts

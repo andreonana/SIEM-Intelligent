@@ -21,6 +21,8 @@
 
 from datetime import datetime
 
+from elasticsearch import AsyncElasticsearch
+
 from app.core.config import settings
 from app.modules.correlation.rules.base import CorrelationAlert, CorrelationRule, LogWindow
 
@@ -35,7 +37,7 @@ class UnauthorizedPrivilegesRule(CorrelationRule):
          "update role" dans l'intervalle exact entre les deux authentifications.
     """
 
-    def __init__(self, es_client):
+    def __init__(self, es_client) -> None:
         self._es_client = es_client
 
     @property
@@ -54,17 +56,18 @@ class UnauthorizedPrivilegesRule(CorrelationRule):
             log
             for log in window.logs
             if log.get("log_type") == "auth"
-            and log.get("extra", {}).get("auth_result") == "success"
-            and log.get("extra", {}).get("role") is not None
-            and log.get("host")
+             and log.get("extra", {}).get("auth_result") == "success"
+             and log.get("extra", {}).get("role") is not None
+             and log.get("host")
+             and log.get("timestamp")
         ]
 
         alerts: list[CorrelationAlert] = []
 
         for current_auth in successful_auths:
-            username = current_auth["host"]
-            current_role = current_auth["extra"]["role"]
-            current_timestamp = datetime.fromisoformat(current_auth["timestamp"])
+            username            = current_auth["host"]
+            current_role        = current_auth["extra"]["role"]
+            current_timestamp   = datetime.fromisoformat(current_auth["timestamp"])
 
             previous_auth = await self._find_previous_successful_auth(
                 username, before=current_timestamp
@@ -91,17 +94,11 @@ class UnauthorizedPrivilegesRule(CorrelationRule):
                     CorrelationAlert(
                         rule_name=self.name,
                         severity="CRITICAL",
-                        description=(
-                            f"Changement de rôle non autorisé détecté pour "
-                            f"l'utilisateur '{username}' : rôle passé de "
-                            f"'{previous_role}' à '{current_role}' entre "
-                            f"{previous_timestamp.isoformat()} et "
-                            f"{current_timestamp.isoformat()}, sans log "
-                            f"d'autorisation administrateur correspondant "
-                            f"dans cet intervalle."
+                        description=(f"Changement de rôle non autorisé détecté pour l'utilisateur '{username}' : rôle passé de '{previous_role}' à '{current_role}' entre "
+                            f"{previous_timestamp.isoformat()} et {current_timestamp.isoformat()}, sans log d'autorisation administrateur correspondant dans cet intervalle."
                         ),
                         host=username,
-                        related_log_ids=[previous_auth["id"], current_auth["id"]],
+                        related_logs_ids=[previous_auth["id"], current_auth["id"]],
                         generated_log_severity="critical",
                         generated_log_tags=[UNAUTHORIZED_PRIVILEGES_TAG],
                         triggers_lockout=True,
