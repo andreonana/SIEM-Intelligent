@@ -216,9 +216,15 @@ class Settings(BaseSettings):
         "warning",
     ]
 
+    #   Activation et désactivation des règles de corrélation par l'admin
+    es_rule_configs_index_name:             str = "smart-siem-rule-configs"
+
     #   ---------------------------------------------------------------------------------------
     #       SECTION:    Horaires de travail et détection hors-horaire
     #   ---------------------------------------------------------------------------------------
+
+    #   Validation de l'admin
+    approved_admins:                        list[str] = []
 
     #   Nom de l'index contenant la configuration des horaires de travail de l'entreprise (days and hours
     #    open, exceptions ponctuelles telles heures sup), gérée par un admin global.

@@ -27,8 +27,39 @@ from app.core.config import settings
 from app.modules.correlation.rules.base import CorrelationAlert, CorrelationRule, LogWindow
 
 UNAUTHORIZED_PRIVILEGES_TAG = "unauthorised privileges"
-UPDATE_ROLE_TAG = "update role"
+UPDATE_ROLE_TAG             = "update role"
 
+_AUTH_FAILURE_TAGS: frozenset[str] = frozenset({
+    "failed password",
+    "authentication error",
+    "authentication failure",
+    "invalid user",
+    "invalid credentials",
+    "login failed",
+    "logon failure",
+    "access denied",
+    "permission denied",
+})
+
+def _is_successful_auth_response(log: dict) -> bool:
+    """
+        Détermine si un log est la réponse d'un serveur à une authentification réussie.
+        Critères:
+            1. log_type == "auth"
+            2. severity == "info"   -> Aucun échec, tagging n'a rien modifié et severity est restée "info" par défaut
+            3. host renseigné       ->  host = username dans la réponse du serveur
+            4. timestamp renseigné
+            5. Aucun tag d'échec explicite dans la liste des tags indexés.
+    """
+    if log.get("log_type") != "auth":
+        return False
+    if not log.get("host") or not log.get("timestamp"):
+        return False
+    if log.get("severity") != "info":
+        return False
+    if set(log.get("tags", [])) & _AUTH_FAILURE_TAGS:
+        return False
+    return True
 
 class UnauthorizedPrivilegesRule(CorrelationRule):
     """
@@ -55,11 +86,8 @@ class UnauthorizedPrivilegesRule(CorrelationRule):
         successful_auths = [
             log
             for log in window.logs
-            if log.get("log_type") == "auth"
-             and log.get("extra", {}).get("auth_result") == "success"
+            if _is_successful_auth_response(log)
              and log.get("extra", {}).get("role") is not None
-             and log.get("host")
-             and log.get("timestamp")
         ]
 
         alerts: list[CorrelationAlert] = []
@@ -124,11 +152,12 @@ class UnauthorizedPrivilegesRule(CorrelationRule):
                 query={
                     "bool": {
                         "filter": [
-                            {"term": {"host": username}},
-                            {"term": {"log_type": "auth"}},
-                            {"term": {"extra.auth_result": "success"}},
+                            {"term": {"host":       username}},
+                            {"term": {"log_type":   "auth"}},
+                            {"term": {"severity":   "info"}},
                             {"range": {"timestamp": {"lt": before.isoformat()}}},
-                        ]
+                        ],
+                    "must_not": [{"terms": {"tags": list(_AUTH_FAILURE_TAGS)}}],
                     }
                 },
                 sort=[{"timestamp": {"order": "desc"}}],

@@ -1,36 +1,38 @@
+#   backend/app/modules/rbac/auth.py
+#
+#   Rôle: authentification et gestion des tokens JWT.
+#   Gère le hachage des passwords, la création et la vérification des tokens JWT.
+#
+#   Utilisé par:
+#       - roles.py pour le décodage de token sur chaque requête protégée
+#       - routeur de login
+
 # ============================================================
 # auth.py — Authentication & JWT Token Management
 # Handles: password hashing, token creation, token decoding
 # Used by: rbac.py, and the backend dev's login endpoint
 # ============================================================
 
-import os
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
+from datetime import datetime, timedelta, timezone
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# Load variables from the .env file
-# This reads JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_MINUTES
-load_dotenv()
+from elasticsearch import Elasticsearch
 
-# ── Configuration ─────────────────────────────────────────
-# These come from .env — never hardcoded
-SECRET_KEY = os.getenv("JWT_SECRET")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-EXPIRY_MINUTES = int(os.getenv("JWT_EXPIRY_MINUTES", "60"))
+from app.core.config import settings
 
 # Safety check: if JWT_SECRET is missing, crash immediately
 # Better to know now than to have silent security failures
-if not SECRET_KEY:
+if not settings.jwt_secret:
     raise RuntimeError("JWT_SECRET is not set in .env file!")
 
 # ── Password Hashing ──────────────────────────────────────
 # bcrypt is the industry standard for hashing passwords
 # NEVER store plain passwords — always store the hash
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(plain_password: str) -> str:
     """
@@ -39,7 +41,7 @@ def hash_password(plain_password: str) -> str:
     
     Use this when CREATING a user.
     """
-    return pwd_context.hash(plain_password)
+    return _pwd_context.hash(plain_password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -48,7 +50,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     
     Use this when a user LOGS IN.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    return _pwd_context.verify(plain_password, hashed_password)
 
 # ── JWT Token Creation ────────────────────────────────────
 def create_access_token(user_id: str, username: str, role: str) -> str:
@@ -65,13 +67,15 @@ def create_access_token(user_id: str, username: str, role: str) -> str:
     Example output:
     "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoi..."
     """
+    now = datetime(timezone.utc)
     payload = {
         "sub": str(user_id),
         "username": username,
         "role": role,
-        "exp": datetime.utcnow() + timedelta(minutes=EXPIRY_MINUTES)
+        "iat" : now,
+        "exp": now + timedelta(minutes=settings.jwt_expiry_minutes)
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 # ── JWT Token Decoding ────────────────────────────────────
 def decode_access_token(token: str) -> dict:
@@ -87,7 +91,7 @@ def decode_access_token(token: str) -> dict:
     - Token is malformed
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm],)
         
         # Make sure the token actually has a user ID
         if payload.get("sub") is None:
@@ -104,6 +108,40 @@ def decode_access_token(token: str) -> dict:
             detail="Token is invalid or has expired. Please log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    def login(es_client: Elasticsearch, username: str, password: str):
+        response = es_client.search(
+            index="users",
+            body={
+                "query": {
+                    "term": {"username.keyword": username}
+                }
+            }
+        )
+
+        hits = response["hit"]["hits"]
+
+        if not hits:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password"
+            )
+
+        token = create_access_token(
+            user_id=user["id"],
+            username=user["username"],
+            role=user["role"],
+        )
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "role": user["role"],
+            }
+        }
 
 # ── Bearer Token Extractor ────────────────────────────────
 # This tells FastAPI to look for the token in the

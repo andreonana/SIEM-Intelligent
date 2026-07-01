@@ -21,13 +21,15 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 class SearchRequest(BaseModel):
     """
     Corps de la requête de recherche multi-critère.
-    Tous les champs sont optionnels (seuls ceux ournis par l'user sont utilisés pour filtrer les recherches)
+    Tous les champs sont optionnels (seuls ceux fournis par l'user sont utilisés pour filtrer les recherches)
     """
 
+    timestamp:      timestamp   |   None = None
     source_ip:      str | None = None
     host:           str | None = None
     log_type:       str | None = None
     severity:       str | None = None
+    extra:          str | None = None
     page:           int = 1
     page_size:      int = 50
 
@@ -46,6 +48,8 @@ async def search_logs(
     #       Seuls les critères effectivement fournis par l'appelant sont ajoutés à la requête, les autres sont 
     #        simplement absents (pas de filtre = toutes les valeurs accpetées pour ce champ).
     filters = []
+    if search.timestamp:
+        filters.append({"term": {"timestamp": search.timestamp}})
     if search.source_ip:
         filters.append({"term": {"source_ip": search.source_ip}})
     if search.host:
@@ -54,6 +58,8 @@ async def search_logs(
         filters.append({"term": {"log_type": search.log_type}})
     if search.severity:
         filters.append({"term": {"severity": search.severity}})
+    if search.extra:
+        filters.append({"term": {"extra": search.extra}})
     
     query = {"bool": {"filter": filters}} if filters else {"match_all": {}}
 

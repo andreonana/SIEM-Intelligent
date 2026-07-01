@@ -99,7 +99,7 @@ async def request_tag_severity_update(
     if tag in IMMUNE_TAGS:
         raise ValueError(f"Le tag `{tag}` est immunisé contre toute modification. Il est réservé à la traçabiliré interne automatique du système.")
 
-    is_admin = requested_by["role"] == "administrator"
+    is_permis = requested_by["role"] == "analyst"
     now = datetime.now(timezone.utc)
 
     document = {
@@ -108,9 +108,9 @@ async def request_tag_severity_update(
         "severity": severity,
         "action": action,
         "tag": tag,
-        "status": "validée" if is_admin else "en attente",
-        "reviewed_by": requested_by["username"] if is_admin else None,
-        "reviewed_at": now.isoformat() if is_admin else None,
+        "status": "validée" if is_permis else "en attente",
+        "reviewed_by": requested_by["username"] if is_permis else None,
+        "reviewed_at": now.isoformat() if is_permis else None,
     }
 
     response = await es_client.index(

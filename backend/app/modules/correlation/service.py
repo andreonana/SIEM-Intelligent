@@ -20,6 +20,7 @@ from app.modules.correlation.rules.base import CorrelationAlert, LogWindow
 from app.modules.correlation.rules.registry import get_active_rules
 from app.modules.correlation.lockout_service import lock_entity
 from app.modules.correlation.business_hours_service import get_business_hours_config
+from app.modules.correlation.mitre import get_mitre
 
 async def _fetch_recent_logs(
     es_client:      AsyncElasticsearch,
@@ -54,6 +55,9 @@ async def _index_alert(alert: CorrelationAlert, es_client: AsyncElasticsearch) -
     """
         Indexe une alerte produite par une règle dans l'index Elasticsearch dédié aux alertes (settings.es_alerts_index_name)
     """
+    
+    mitre = get_mitre(alert.rule_name)
+
     document = {
         "rule_name":        alert.rule_name,
         "severity":         alert.severity,
@@ -63,6 +67,11 @@ async def _index_alert(alert: CorrelationAlert, es_client: AsyncElasticsearch) -
         "related_log_ids":  alert.related_log_ids,
         "detected_at":      alert.detected_at.isoformat(),
         "status":           "ouvert",
+        #   MITRES ATTAQUES A AJOUTER
+        "mitre_tactic_id":      mitre.get("tactic_id", ""),
+        "mitre_tactic_name":    mitre.get("tactic_name", ""),
+        "mitre_technique_id":   mitre.get("technique_id", ""),
+        "mitre_technique_name": mitre.get("technique_name", ""),
     }
 
     await es_client.index(index=settings.es_alerts_index_name, document=document)
