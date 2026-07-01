@@ -17,9 +17,9 @@ class BusinessHoursUpdateRequest(BaseModel):
         Corps de la requête de configuration des horaires de travail normaux.
     """
 
-    working_days:   list[int]                                                   #   0 = lundi ... 6 = dimanche
-    opening_time:   str                                                         #   Format "HH:MM"
-    closing_time:   str                                                         #   Format "HH:MM"
+    working_days:   list[int] = [0, 1, 2, 3, 4]                                             #   0 = lundi ... 6 = dimanche
+    opening_time:   str       = "08:00"                                                     #   Format "HH:MM"
+    closing_time:   str       = "20:00"                                                     #   Format "HH:MM"
 
 class BusinessHoursExceptionRequest(BaseModel):
     """

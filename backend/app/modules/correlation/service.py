@@ -13,6 +13,7 @@
 
 from datetime import datetime, timedelta, timezone
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from elasticsearch import AsyncElasticsearch
 
 from app.core.config import settings
@@ -20,6 +21,8 @@ from app.modules.correlation.rules.base import CorrelationAlert, LogWindow
 from app.modules.correlation.rules.registry import get_active_rules
 from app.modules.correlation.lockout_service import lock_entity
 from app.modules.correlation.business_hours_service import get_business_hours_config
+from app.modules.correlation.network_inventory_service import get_network_inventory
+from app.modules.correlation.rule_config_service import get_rule_configs
 from app.modules.correlation.mitre import get_mitre
 
 async def _fetch_recent_logs(
@@ -34,20 +37,24 @@ async def _fetch_recent_logs(
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(seconds=window_seconds)
 
-    filters = [{"range": {"timestamp": {"gte": window_start.isoformat()}}}]
+    filters: list[dict] = [{"range": {"timestamp": {"gte": window_start.isoformat()}}}]
     if source_ip:
         filters.append({"term": {"source_ip": source_ip}})
     if host:
         filters.append({"term": {"host": host}})
 
-    response = await es_client.search(
-        index=settings.es_logs_index_name,
-        query={"bool": {"filter": filters}},
-        size=10000,
-    )
+    try:
+        response = await es_client.search(
+            index=settings.es_logs_index_name,
+            query={"bool": {"filter": filters}},
+            size=10_000,
+            sort=[{"timestamp": {"order": "asc"}}],
+        )
+    except Exception as exc:
+        print(f"[Corrélation] Impossible de récupérer les logs depuis ES: {exc}")
+        return LogWindow(logs=[], cindow_start=window_startt, window_end=now)
 
-    hits = response["hits"]["hits"]
-    logs = [{"id": hit["_id"], **hit["_source"]} for hit in hits]
+    logs = [{"id": hit["_id"], **hit["_source"]} for hit in response["hits"]["hits"]]
 
     return LogWindow(logs=logs, window_start=window_start, window_end=now)
 
@@ -55,7 +62,7 @@ async def _index_alert(alert: CorrelationAlert, es_client: AsyncElasticsearch) -
     """
         Indexe une alerte produite par une règle dans l'index Elasticsearch dédié aux alertes (settings.es_alerts_index_name)
     """
-    
+
     mitre = get_mitre(alert.rule_name)
 
     document = {
@@ -74,7 +81,10 @@ async def _index_alert(alert: CorrelationAlert, es_client: AsyncElasticsearch) -
         "mitre_technique_name": mitre.get("technique_name", ""),
     }
 
-    await es_client.index(index=settings.es_alerts_index_name, document=document)
+    try:
+        await es_client.index(index=settings.es_alerts_index_name, document=document)
+    except Exception as exc:
+        print(f"[Correlation] Impossible d'indexer l'alerte `{alert.rule_name}`: {exc}.")
 
 async def _index_generated_log(alert: CorrelationAlert, es_client: AsyncElasticsearch) -> None:
     """
@@ -93,14 +103,17 @@ async def _index_generated_log(alert: CorrelationAlert, es_client: AsyncElastics
         "received_at":      alert.detected_at.isoformat(),
     }
 
-    await es_client.index(index=settings.es_logs_index_name, document=document)
+    try:
+        await es_client.index(index=settings.es_logs_index_name, document=document)
+    except Exception as exc:
+        print(f"[Correlation] Impossible d'indexer le log de détection `{alert.rule_name}`: {exc}.")
 
 async def _trigger_lockout_if_needed(alert: CorrelationAlert, es_client: AsyncElasticsearch) -> None:
     """
         Déclenche le blocage simulé des entités concernées par une alerte comme brute-force
         N'est appelé que pour les alertes issues d'une règle exigeant ce playbook de blocage (bruteforce_threshold, business_hours_violation, etc)
     """
-    if alert.rule_name not in {"bruteforce_threshold", "business_hours_violation"}:
+    if not alert.rule_name:
         return
 
     if alert.source_ip:
@@ -132,6 +145,23 @@ async def _process_alerts(alerts: list[CorrelationAlert], es_client: AsyncElasti
         
         await _trigger_lockout_if_needed(alert, es_client)
 
+async def _load_scan_context(es_client: AsyncElasticsearch) -> dict:
+    """
+        Charge depuis E, en parallèle conceptuelle (séquentielle ici pour siplicité), les 3 sources de contexte nécessaire aux règles:
+            -   Configuration des horaires de travail (BusinessHoursRule);
+            -   Inventaire réseau connu (UnknownNetworkRule);
+            -   Configurations d'acitivation des règles.
+    """
+    business_hours_config   = await get_business_hours_config(es_client)
+    network_inventory       = await get_network_inventory(es_client)
+    rule_configs            = await get_rule_configs(es_client)
+
+    return {
+        "business_hours_config":    business_hours_config,
+        "network_inventory":        network_inventory,
+        "rule_configs":             rule_configs,
+    }
+
 async def run_correlation_scan(es_client: AsyncElasticsearch, source_ip: str | None = None, host: str | None = None) -> list[CorrelationAlert]:
     """
         Exécute un cycle complet de corrélation sur la fenêtre de temps générale en récupérant les logs récents, appliquant toutes les règles actives, indexant
@@ -146,11 +176,22 @@ async def run_correlation_scan(es_client: AsyncElasticsearch, source_ip: str | N
         host=host,
     )
 
-    business_hours_config = await get_business_hours_config(es_client)
+    context = await _load_scan_context(es_client)
+
+    active_rules = get_active_rules(
+        business_hours_config=context["business_hours_config"],
+        network_inventory=context["network_inventory"],
+        es_client=es_client,
+        rule_configs=context["rule_configs"],
+    )
 
     all_alerts: list[CorrelationAlert] = []
-    for rule in get_active_rules(business_hours_config):
-        all_alerts.extend(rule.evaluate(window))
+    for rule in active_rules:
+        try:
+            rule_alerts = await rule.evaluate(window)
+            all_alerts.extend(rule.alerts)
+        except Exception as exc:
+            print(f"[Corrélation] Erreur lors de l'évaluation de la règle `{rule.name}`: {exc}.")
     
     await _process_alerts(all_alerts, es_client)
 
@@ -162,22 +203,11 @@ async def evaluate_for_source(es_client: AsyncElasticsearch, source_ip: str | No
         Appelée par le service d'ingestion juste après l'indexation d'un log dont le type, la criticité et/ou les tags correspondent au conditions de déclenchement
          immédiat
     """
-    window = await _fetch_recent_logs(
-        es_client,
-        window_seconds=settings.correlation_brute_force_window_seconds,
+    return run_correlation_scan(
+        es_client=es_client,
         source_ip=source_ip,
         host=host,
     )
-
-    get_business_hours_config = await get_business_hours_config(es_client)
-
-    all_alerts: list[CorrelationAlert] = []
-    for rule in get_active_rules(get_business_hours_config):
-        all_alerts.extend(rule.evaluate(window))
-
-    await _process_alerts(all_alerts, es_client)
-
-    return all_alerts
 
 def should_trigger_immediate_scan(log_type: str, severity: str, tags: list[str]) -> bool:
     """
@@ -196,7 +226,37 @@ def should_trigger_immediate_scan(log_type: str, severity: str, tags: list[str])
         return True
     
     trigger_tags = set(settings.correlation_immediate_trigger_tags)
-    if trigger_tags.intersection(tags):
+    if trigger_tags & set(tags):
         return True
 
     return False
+
+async def _periodic_scan_job() -> None:
+    """
+        Tâche planifiée par APIScheduler: exécute run_correlation_scan() sur l'ensemble des logs récents, sans filtre de source.
+        Le client Elasticsearch est récupéré via get_es_client() et aucune connexion supplémentaire n'est ouverte à chaque exécution.
+    """
+    es_client = get_es_client()
+    try:
+        alerts = await run_correlation_scan(es_client)
+        if alerts:
+            print(f"[Corrélation][Périodique] {len(alerts)} alerte(s) détectée(s).")
+    except Exception as exc:
+        print(f"[Corrélation][éPériodique] Erreur lors du scan: {exc}.")
+
+def start_correlation_scheduler() -> None:
+    """
+        Démarre le scheduler APScheduler (AsyncIOScheduler) qui exécute le scan de corrélation périodique toutes les settings.correlation_scan_interval_seconds.
+        AsyncIOScheduler s'intègre dans la boucle asynchrio de FastAPI et peut awaiter des coroutines (_periodic_scan_job) sans bloquer le serveur.
+        Il est appelé une seule fois depuis le lifespan de main.py, avant le yield et après start_retention_scheduler().
+    """
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        _periodic_scan_job,
+        trigger="interval",
+        seconds=settings.correlation_scan_interval_seconds,
+        id="periodic_correlation_scan",
+        replace_existing=True,
+    )
+    scheduler.start()
+    print(f"[Corrélation] Scheduler démarré. Scan toutes les {settings.correlation_scan_intervla_seconds} secondes.")
