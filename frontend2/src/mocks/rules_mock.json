@@ -1,0 +1,7 @@
+[
+  { "id": "RULE-01", "name": "Détection Brute-Force SSH", "description": "Déclenche une alerte si 5 échecs de connexion surviennent en moins de 10s.", "category": "Authentication", "severity": "HIGH", "active": true },
+  { "id": "RULE-02", "name": "Suspicion d'Exfiltration Web (Data Leak)", "description": "Volume de données sortantes supérieur à 2 Go sur un seul serveur en 5min.", "category": "Exfiltration", "severity": "CRITICAL", "active": true },
+  { "id": "RULE-03", "name": "Tentative d'injection SQL (WAF)", "description": "Détection de caractères suspects (UNION, SELECT, OR 1=1) dans les requêtes HTTP.", "category": "Web Attack", "severity": "HIGH", "active": true },
+  { "id": "RULE-04", "name": "Élévation de Privilèges Active Directory", "description": "Ajout anormal d'un compte utilisateur dans le groupe Administrateurs du domaine.", "category": "IAM / Privileges", "severity": "CRITICAL", "active": false },
+  { "id": "RULE-05", "name": "Balayage de Ports Réseau (Port Scanning)", "description": "Plus de 50 tentatives de connexion sur des ports distincts depuis une IP externe.", "category": "Reconnaissance", "severity": "LOW", "active": true }
+]
