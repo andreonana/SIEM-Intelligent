@@ -1,70 +1,131 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import WorldAttackMap from '../components/WorldAttackMap';
 import alertsData from '../mocks/alerts_mock.json';
+import fallbackLogs from '../mocks/logs_mock.json';
 
-export default function Dashboard({ user }) {
-  const [timePeriod, setTimePeriod] = useState('24h');
+const timeline = [
+  { time: '00h', value: 12, label: 'Nominal' },
+  { time: '04h', value: 45, label: 'Pic DDoS' },
+  { time: '08h', value: 18, label: 'Sondes mixtes' },
+  { time: '12h', value: 9, label: 'Calme' },
+  { time: '16h', value: 15, label: 'Bruit auth' },
+  { time: '20h', value: 22, label: 'Modere' },
+];
 
-  const totalLogs = 142840;
-  const criticalCount = alertsData.filter(a => a.severity === 'CRITICAL').length;
-  const warningCount = alertsData.filter(a => a.severity === 'WARNING').length;
-  const infoCount = alertsData.filter(a => a.severity === 'INFO' || a.status === 'FAUX_POSITIF').length;
-  const totalAlerts = criticalCount + warningCount + infoCount || 1;
+const ingestionHealth = [
+  { name: 'Collecteur Syslog', status: 'En ligne', color: 'emerald' },
+  { name: 'Flux Filebeat', status: 'En ligne', color: 'emerald' },
+  { name: 'Collecteur WAF', status: 'Retarde', color: 'amber' },
+  { name: 'Telemetrie DNS', status: 'En ligne', color: 'emerald' },
+];
 
-  const pctCritical = Math.round((criticalCount / totalAlerts) * 100);
-  const pctWarning = Math.round((warningCount / totalAlerts) * 100);
-  const pctInfo = Math.round((infoCount / totalAlerts) * 100);
+const mitreCoverage = [
+  { name: 'Acces initial', value: 38, color: 'bg-red-500' },
+  { name: 'Acces aux identifiants', value: 24, color: 'bg-amber-500' },
+  { name: 'Decouverte', value: 18, color: 'bg-cyan-500' },
+  { name: 'Exfiltration', value: 11, color: 'bg-violet-500' },
+  { name: 'Impact', value: 9, color: 'bg-rose-500' },
+];
+
+function Panel({ title, children, className = '' }) {
+  return (
+    <section className={`rounded-xl border border-slate-800/80 bg-slate-950/65 p-4 shadow-lg ${className}`}>
+      <h3 className="mb-4 border-b border-slate-800/70 pb-3 text-xs font-black uppercase tracking-[0.24em] text-slate-200">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function Metric({ label, value, trend, tone = 'cyan' }) {
+  const tones = {
+    cyan: 'text-cyan-400 border-cyan-500/20 bg-cyan-500/10',
+    red: 'text-red-400 border-red-500/20 bg-red-500/10',
+    amber: 'text-amber-400 border-amber-500/20 bg-amber-500/10',
+    emerald: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10',
+    violet: 'text-violet-400 border-violet-500/20 bg-violet-500/10',
+  };
 
   return (
-    <div className="space-y-6 text-slate-200 overflow-y-auto max-h-[85vh] pr-2 animate-in fade-in duration-300">
-      
-      {/* 1. LIVE STATUS BAR */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 rounded-2xl border border-white/10 bg-gradient-to-r from-slate-900/80 to-slate-950/50 shadow-lg">
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Regional Threat Level</p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="relative flex h-3 w-3 items-center justify-center">
-                <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-amber-500/80"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
-              </span>
-              <span className="text-lg font-black text-amber-400">ELEVATED</span>
-            </div>
-          </div>
-          <div className="border-l border-slate-700/50 pl-4 flex flex-col">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Monitoring Health</p>
-            <span className="text-lg font-black text-emerald-400 mt-1">94.2%</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span className="inline-flex gap-1 px-2 py-1 rounded-full bg-slate-800/50 border border-slate-700/50">
-            <span className="relative flex h-2 w-2 items-center justify-center mt-0.5">
-              <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-green-500/80"></span>
-              <span className="relative inline-flex h-1 w-1 rounded-full bg-green-400"></span>
-            </span>
-            Monitoring active
-          </span>
-        </div>
+    <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">{label}</span>
+        <span className={`rounded border px-2 py-0.5 text-[10px] font-black ${tones[tone]}`}>{trend}</span>
       </div>
+      <div className={`mt-3 text-3xl font-black ${tones[tone].split(' ')[0]}`}>{value}</div>
+    </div>
+  );
+}
 
-      {/* 2. HEADER WITH TIME FILTER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+export default function Dashboard({ user, logs = fallbackLogs }) {
+  const [timePeriod, setTimePeriod] = useState('24h');
+
+  const operationalLogs = logs.length ? logs : fallbackLogs;
+  const criticalCount = alertsData.filter((alert) => alert.severity === 'CRITICAL').length;
+  const openIncidents = alertsData.filter((alert) => alert.escalated).length;
+  const resolvedToday = alertsData.filter((alert) => alert.status === 'TRAITÉ' || alert.status === 'TRAITÃ‰').length;
+  const blockedIps = operationalLogs.filter(
+    (log) => log.severity === 'CRITICAL' || log.payload?.toLowerCase().includes('blocked')
+  ).length;
+  const totalEvents = 142840;
+
+  const threatSources = useMemo(() => {
+    return operationalLogs
+      .filter((log) => log.severity !== 'INFO')
+      .slice(0, 5)
+      .map((log) => ({
+        ip: log.source,
+        service: log.service,
+        severity: log.severity,
+        event: log.event,
+      }));
+  }, [operationalLogs]);
+
+  const activeIncidents = alertsData
+    .filter((alert) => alert.status !== 'TRAITÉ' && alert.status !== 'TRAITÃ‰' && alert.status !== 'FAUX_POSITIF')
+    .slice(0, 4);
+
+  const automatedActions = operationalLogs.slice(0, 4).map((log) => ({
+    time: log.timestamp?.slice(11, 16) || '--:--',
+    action: log.severity === 'INFO' ? 'Evenement de telemetrie valide' : `Confinement de ${log.source}`,
+    detail: log.service,
+  }));
+
+  return (
+    <div className="max-h-[85vh] space-y-5 overflow-y-auto pr-2 text-slate-200 animate-in fade-in duration-300">
+      <div className="flex flex-col gap-4 rounded-xl border border-slate-800/80 bg-slate-950/70 p-4 shadow-lg lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tight">Regional SOC Command Center</h2>
-          <p className="text-sm text-slate-400 mt-2">
-            Operator: <strong className="text-emerald-400">{user?.name || "Chloe O'Brian"}</strong> • Cameroon and Africa telemetry monitored across {totalLogs.toLocaleString()} events
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
+            <span>SMART SIEM</span>
+            <span className="text-slate-700">/</span>
+            <span>Vue globale</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <h2 className="text-2xl font-black tracking-tight text-white">Tableau de bord des operations SOC</h2>
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-400">
+              Niveau de menace : Eleve
+            </span>
+          </div>
+          <p className="mt-2 font-sans text-sm text-slate-400">
+            Operateur : <strong className="text-emerald-400">{user?.name || "Chloe O'Brian"}</strong>
+            <span className="mx-2 text-slate-600">|</span>
+            Environnement : Production
+            <span className="mx-2 text-slate-600">|</span>
+            Derniere synchro : 14:32:08
           </p>
         </div>
-        
-        <div className="flex bg-slate-900/80 p-1 rounded-xl border border-slate-800/60 text-xs shadow-lg gap-1">
+
+        <div className="flex w-fit rounded-lg border border-slate-800 bg-slate-900/80 p-1 text-xs">
           {['1h', '6h', '24h', '7d'].map((period) => (
             <button
               key={period}
+              type="button"
               onClick={() => setTimePeriod(period)}
-              className={`px-4 py-2 rounded-lg font-semibold uppercase tracking-wider transition-all ${
-                timePeriod === period 
-                  ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg' 
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              className={`rounded-md px-3 py-2 font-black uppercase tracking-wider transition-all ${
+                timePeriod === period
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
               }`}
             >
               {period}
@@ -73,135 +134,128 @@ export default function Dashboard({ user }) {
         </div>
       </div>
 
-      {/* 3. KPI CARDS WITH TREND INDICATORS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-blue-500/10 to-cyan-500/5 p-5 shadow-lg hover:border-blue-500/30 transition-all">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Total Events</span>
-            <span className="inline-flex px-2 py-1 rounded-lg text-xs font-bold text-green-400 bg-green-500/10 border border-green-500/20">↑ 12%</span>
-          </div>
-          <div className="text-4xl font-black text-blue-400">{totalLogs.toLocaleString()}</div>
-          <p className="text-xs text-slate-400 mt-3">Last 24 hours ingestion rate</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label="Evenements totaux" value={totalEvents.toLocaleString()} trend="+12%" tone="cyan" />
+        <Metric label="IP bloquees" value={blockedIps} trend="+6" tone="violet" />
+        <Metric label="Alertes critiques" value={criticalCount} trend="+28%" tone="red" />
+        <Metric label="Incidents ouverts" value={openIncidents} trend="-5%" tone="amber" />
+        <Metric label="Resolus aujourd'hui" value={resolvedToday} trend="+18%" tone="emerald" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <WorldAttackMap />
         </div>
-        
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-red-500/10 to-pink-500/5 p-5 shadow-lg hover:border-red-500/30 transition-all">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Critical Alerts</span>
-            <span className="inline-flex px-2 py-1 rounded-lg text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 animate-pulse">↑ 28%</span>
-          </div>
-          <div className="text-4xl font-black text-red-400">{criticalCount}</div>
-          <p className="text-xs text-red-400/80 font-semibold mt-3">Immediate action required</p>
-        </div>
-        
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-amber-500/10 to-orange-500/5 p-5 shadow-lg hover:border-amber-500/30 transition-all">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Open Incidents</span>
-            <span className="inline-flex px-2 py-1 rounded-lg text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20">↓ 5%</span>
-          </div>
-          <div className="text-4xl font-black text-amber-400">
-            {alertsData.filter(a => a.escalated === true).length}
-          </div>
-          <p className="text-xs text-slate-400 mt-3">In crisis room investigation</p>
-        </div>
-        
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-emerald-500/10 to-green-500/5 p-5 shadow-lg hover:border-emerald-500/30 transition-all">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Resolved</span>
-            <span className="inline-flex px-2 py-1 rounded-lg text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">↑ 18%</span>
-          </div>
-          <div className="text-4xl font-black text-emerald-400">
-            {alertsData.filter(a => a.status === 'TRAITÉ').length}
-          </div>
-          <p className="text-xs text-slate-400 mt-3">Automated remediation executed</p>
+
+        <div className="space-y-5">
+          <Panel title="Sources de menace principales">
+            <div className="space-y-3">
+              {threatSources.map((source, index) => (
+                <div key={`${source.ip}-${index}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 text-xs">
+                  <span className="text-slate-600">#{index + 1}</span>
+                  <div className="min-w-0">
+                    <div className="truncate font-bold text-slate-100">{source.ip}</div>
+                    <div className="truncate font-sans text-[11px] text-slate-500">{source.event}</div>
+                  </div>
+                  <span
+                    className={`rounded border px-2 py-1 text-[9px] font-black ${
+                      source.severity === 'CRITICAL'
+                        ? 'border-red-500/30 bg-red-500/10 text-red-400'
+                        : 'border-amber-500/30 bg-amber-500/10 text-amber-400'
+                    }`}
+                  >
+                    {source.severity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel title="Incidents actifs">
+            <div className="space-y-2">
+              {activeIncidents.map((incident) => (
+                <div key={incident.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-900/70 px-3 py-2 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-black text-slate-100">{incident.id}</div>
+                    <div className="truncate font-sans text-[11px] text-slate-500">{incident.service}</div>
+                  </div>
+                  <span className="rounded-full bg-red-500/10 px-2 py-1 text-[9px] font-black uppercase text-red-400">
+                    {incident.severity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
         </div>
       </div>
 
-      {/* 4. MAIN ANALYTICS SECTION */}
-      <div className="w-full">
-        <WorldAttackMap />
-      </div>
-
-      {/* 5. ANALYTICS CHARTS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* SEVERITY DISTRIBUTION */}
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-5 shadow-lg">
-          <h3 className="text-xs font-black text-slate-100 uppercase tracking-[0.3em] mb-4 pb-3 border-b border-slate-700/50">Alert Severity</h3>
-          <span className="text-xs text-slate-400 block mb-6">Distribution of detected threats</span>
-
-          <div className="flex items-center justify-center mb-6 gap-8">
-            <div 
-              style={{
-                background: `conic-gradient(
-                  #ef4444 0% ${pctCritical}%, 
-                  #f59e0b ${pctCritical}% ${pctCritical + pctWarning}%, 
-                  #3b82f6 ${pctCritical + pctWarning}% 100%
-                )`
-              }}
-              className="w-32 h-32 rounded-full shadow-lg flex items-center justify-center border border-slate-700/50"
-            >
-              <div className="w-20 h-20 rounded-full bg-slate-900 flex flex-col items-center justify-center shadow-inner">
-                <span className="text-[10px] text-slate-500 font-semibold uppercase">Total</span>
-                <span className="text-base font-black text-white">{totalAlerts}</span>
+      <Panel title="Chronologie des attaques">
+        <div className="flex h-52 items-end justify-between gap-3 px-1 pb-2">
+          {timeline.map((bar) => (
+            <div key={bar.time} className="flex h-full flex-1 flex-col justify-end gap-2">
+              <div className="flex flex-1 items-end rounded-t-lg border border-slate-800/70 bg-slate-900/50 px-1.5 pt-2">
+                <div
+                  className="w-full rounded-t-md bg-cyan-500 shadow-[0_0_18px_rgba(6,182,212,0.18)]"
+                  style={{ height: `${Math.max((bar.value / 45) * 100, 8)}%` }}
+                  title={`${bar.value}k - ${bar.label}`}
+                />
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] font-bold text-slate-400">{bar.time}</div>
+                <div className="hidden truncate font-sans text-[10px] text-slate-600 sm:block">{bar.label}</div>
               </div>
             </div>
-
-            {/* LEGEND */}
-            <div className="space-y-3 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500"></span>
-                <div>
-                  <span className="text-slate-400 font-semibold block">Critical</span>
-                  <strong className="text-red-400 text-sm">{pctCritical}%</strong>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-amber-500"></span>
-                <div>
-                  <span className="text-slate-400 font-semibold block">Warning</span>
-                  <strong className="text-amber-400 text-sm">{pctWarning}%</strong>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-                <div>
-                  <span className="text-slate-400 font-semibold block">Info</span>
-                  <strong className="text-blue-400 text-sm">{pctInfo}%</strong>
-                </div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
+      </Panel>
 
-        {/* TIMELINE CHART */}
-        <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-slate-900/60 p-5 shadow-lg">
-          <h3 className="text-xs font-black text-slate-100 uppercase tracking-[0.3em] mb-4 pb-3 border-b border-slate-700/50">Attack Timeline</h3>
-          <span className="text-xs text-slate-400 block mb-6">Threat activity across 24-hour period</span>
-
-          <div className="flex-1 flex items-end justify-between gap-2 px-2 pb-4">
-            {[
-              { time: '00h', value: 12, label: 'Nominal' },
-              { time: '04h', value: 45, label: 'DDoS' },
-              { time: '08h', value: 18, label: 'Mixed' },
-              { time: '12h', value: 9, label: 'Low' },
-              { time: '16h', value: 15, label: 'Nominal' },
-              { time: '20h', value: 22, label: 'Moderate' }
-            ].map((bar, idx) => (
-              <div key={idx} className="flex-1 flex flex-col items-center gap-2 group">
-                <span className="text-xs font-bold text-slate-100 opacity-0 group-hover:opacity-100 transition-all duration-200">{bar.value}k</span>
-                <div className="w-full bg-slate-800/40 rounded-t-xl overflow-hidden transition-all group-hover:bg-slate-700/60 border border-transparent group-hover:border-emerald-500/30">
-                  <div 
-                    className="w-full bg-gradient-to-t from-emerald-500 to-cyan-500 rounded-t-xl shadow-lg shadow-emerald-500/20"
-                    style={{ height: `${(bar.value / 45) * 140}px` }}
-                  />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <Panel title="Couverture MITRE">
+          <div className="space-y-3">
+            {mitreCoverage.map((item) => (
+              <div key={item.name}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span className="font-sans text-slate-400">{item.name}</span>
+                  <span className="font-bold text-slate-200">{item.value}%</span>
                 </div>
-                <span className="text-[10px] text-slate-400 font-semibold">{bar.time}</span>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.value}%` }} />
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
+
+        <Panel title="Sante de l'ingestion">
+          <div className="space-y-3">
+            {ingestionHealth.map((item) => (
+              <div key={item.name} className="flex items-center justify-between rounded-lg bg-slate-900/60 px-3 py-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${item.color === 'emerald' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <span className="font-sans text-slate-300">{item.name}</span>
+                </div>
+                <span className={item.color === 'emerald' ? 'font-bold text-emerald-400' : 'font-bold text-amber-400'}>
+                  {item.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Actions automatisees recentes">
+          <div className="space-y-3">
+            {automatedActions.map((item, index) => (
+              <div key={`${item.time}-${index}`} className="grid grid-cols-[44px_1fr] gap-3 text-xs">
+                <span className="font-bold text-slate-500">{item.time}</span>
+                <div>
+                  <div className="font-bold text-slate-100">{item.action}</div>
+                  <div className="font-sans text-[11px] text-slate-500">{item.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
       </div>
-      
     </div>
   );
 }

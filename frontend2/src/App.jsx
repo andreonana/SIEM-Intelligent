@@ -80,7 +80,7 @@ export default function App() {
       case 'crisis': 
         return <CrisisRoom user={user} logs={logs} setLogs={setLogs} />;
       case 'compliance': 
-        return <Compliance user={user} logs={logs} />;
+        return <Compliance user={user} logs={logs} setActiveView={setActiveView} />;
       case 'reports': 
         return <CyberReports user={user} logs={logs} rules={rules}/>;
 

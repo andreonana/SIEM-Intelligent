@@ -28,7 +28,7 @@ export default function Sidebar({ activeView, setActiveView, user, onLogout, isL
       roles: ['reader', 'analyst', 'administrator'],
       items: [
         { id: 'crisis', name: 'Crisis Room', icon: '⬡', allowedRoles: ['analyst', 'administrator'] },
-        { id: 'compliance', name: 'Compliance Dashboard', icon: '◼', allowedRoles: ['reader', 'analyst', 'administrator'] },
+        { id: 'compliance', name: 'Tableau de conformité', icon: '◼', allowedRoles: ['reader', 'analyst', 'administrator'] },
         { id: 'reports', name: 'Rapports Cyber (PDF)', icon: '▾', allowedRoles: ['reader', 'analyst', 'administrator'] }
       ]
     },

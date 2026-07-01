@@ -2,228 +2,235 @@ import { useState } from 'react';
 import { jsPDF } from 'jspdf';
 import { domToCanvas } from 'modern-screenshot';
 
-/**
- * COMPOSANT : CyberReports (Générateur Analytique Réel et Exportation PDF)
- */
+const REPORT_TYPES = [
+    {
+        id: 'mensuel',
+        label: 'Bilan mensuel',
+        description: 'Synthèse C-level : posture, menaces et activité SOC.',
+    },
+    {
+        id: 'incident',
+        label: 'Post-incident',
+        description: 'Dossier forensics sur l’alerte critique principale.',
+    },
+    {
+        id: 'compliance',
+        label: 'Audit conformité',
+        description: 'Alignement ISO 27001 et traçabilité des contrôles.',
+    },
+];
+
+function isResolved(log) {
+    const status = log.status || '';
+    return status === 'TRAITÉ' || status === 'TRAITE' || status === 'FAUX_POSITIF';
+}
+
 export default function CyberReports({ user, logs = [], rules = [] }) {
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedReportType, setSelectedReportType] = useState('mensuel');
 
-    // --- 1. CALCULS ANALYTIQUES DYNAMIQUES EN TEMPS RÉEL ---
     const totalLogs = logs.length;
-    const criticalLogs = logs.filter(l => l.severity === 'CRITICAL');
+    const criticalLogs = logs.filter((l) => l.severity === 'CRITICAL');
     const criticalCount = criticalLogs.length;
-    const highCount = logs.filter(l => l.severity === 'HIGH').length;
-    const activeRules = rules.filter(r => r.active);
-    const activeRulesCount = activeRules.length;
-    
-    const unresolvedCount = logs.filter(l => l.status !== 'TRAITÉ').length;
-    const simulatedMTTR = Math.max(12, 14 + unresolvedCount * 3); 
+    const highCount = logs.filter((l) => l.severity === 'HIGH').length;
+    const activeRulesCount = rules.filter((r) => r.active).length;
+    const unresolvedCount = logs.filter((l) => !isResolved(l)).length;
+    const escalatedCount = logs.filter((l) => l.escalated).length;
+    const simulatedMTTR = Math.max(12, 14 + unresolvedCount * 3);
 
-    const mainThreatName = criticalCount > 0 ? criticalLogs[0].message : "Aucune anomalie critique persistante";
+    const mainThreat =
+        criticalCount > 0
+            ? criticalLogs[0].event || criticalLogs[0].message || 'Alerte critique'
+            : 'Aucune anomalie critique persistante';
 
-    // --- 2. LOGIQUE GÉNÉRATIVE DU TEXTE ---
     const generateDynamicContent = (type) => {
         switch (type) {
             case 'mensuel':
                 return {
-                    title: "BILAN MENSUEL DES OPÉRATIONS SÉCURITÉ (C-LEVEL)",
-                    subtitle: `Analyse macroscopique de la posture cyber basée sur l'ingestion de ${totalLogs} événements.`,
-                    section1: `1. Posture Globale de l'Infrastructure : La cellule CTU opère actuellement sous un niveau de vigilance optimal avec un total de ${activeRulesCount} règles de corrélation actives sur le moteur SMART SIEM. L'intégrité de la surveillance couvre la totalité des périmètres réseau définis en semaine 1.`,
-                    section2: `2. Évaluation des Menaces et Incidents : Sur la période, le SOC a intercepté ${criticalCount} alertes critiques de sévérité 1 (P1) et ${highCount} alertes hautement suspectes (P2). L'événement de corrélation le plus persistant détecté par nos sondes remonte l'activité suivante : "${mainThreatName}". Les playbooks SOAR ont permis de contenir la propagation réseau.`
+                    title: 'Bilan mensuel des opérations sécurité',
+                    subtitle: `${totalLogs} événements analysés sur la période.`,
+                    highlights: [
+                        `${activeRulesCount} règles de corrélation actives`,
+                        `${criticalCount} alerte(s) critique(s) · ${highCount} alerte(s) haute(s)`,
+                        `Menace dominante : ${mainThreat}`,
+                    ],
+                    section1:
+                        'La cellule CTU maintient une couverture de détection sur l’ensemble des périmètres surveillés. Les playbooks SOAR contribuent à la containment automatique des menaces récurrentes.',
+                    section2:
+                        'Ce document est destiné à la direction pour le suivi macroscopique de la posture cyber. Le détail opérationnel reste disponible dans le Dashboard et le triage des alertes.',
                 };
             case 'incident':
                 return {
-                    title: "RAPPORT TECHNIQUE POST-INCIDENT (FORENSICS)",
-                    subtitle: `Dossier d'investigation numérique complet. Focus alerte : ${mainThreatName}.`,
-                    section1: `1. Constat d'Incident et Déclenchement : Une anomalie de sécurité majeure a déclenché le moteur analytique de la cellule CTU. L'investigation se concentre sur l'alerte critique automatisée : "${mainThreatName}". La signature de cet événement est corrélée en direct avec les indicateurs de compromission (IoC).`,
-                    section2: `2. État d'Avancement des Analyses : À cette minute, ${unresolvedCount} logs restent à qualifier et nécessitent une attention immédiate de niveau 2 ou 3. Le temps moyen de résolution (MTTR) est mesuré à ~${simulatedMTTR} minutes, respectant les engagements contractuels de remédiation face à la menace.`
+                    title: 'Rapport technique post-incident',
+                    subtitle: `Focus investigation : ${mainThreat}`,
+                    highlights: [
+                        `${unresolvedCount} log(s) encore à qualifier`,
+                        `MTTR estimé : ~${simulatedMTTR} minutes`,
+                        `${escalatedCount} incident(s) escaladé(s) en cellule de crise`,
+                    ],
+                    section1:
+                        'Anomalie majeure détectée par le moteur de corrélation SMART SIEM. Les IoC associés sont documentés dans le Log Explorer et la Crisis Room.',
+                    section2:
+                        'Ce rapport consolide l’état d’avancement de l’investigation au moment de l’export. Il complète le dossier forensics géré par les analystes L2/L3.',
                 };
             case 'compliance': {
                 const totalPossibleRules = rules.length || 5;
-                const complianceScore = rules.length > 0 
-                    ? Math.round((activeRulesCount / totalPossibleRules) * 100) 
-                    : 80;
+                const complianceScore =
+                    rules.length > 0
+                        ? Math.round((activeRulesCount / totalPossibleRules) * 100)
+                        : 80;
                 return {
-                    title: "RAPPORT D'AUDIT DE CONFORMITÉ RÉGLEMENTAIRE (ISO 27001)",
-                    subtitle: "Évaluation continue de l'alignement de la plateforme SIEM avec les critères de gouvernance.",
-                    section1: `1. Alignement des Politiques de Détection : Le score de conformité technique du SMART SIEM s'élève à ${complianceScore}% de couverture réglementaire. Ce score est directement indexé sur l'activation et le maintien de nos politiques de détection (${activeRulesCount} règles actives sur les ${totalPossibleRules} implémentées).`,
-                    section2: `2. Traçabilité et Auditabilité : Le journal d'Audit Trail atteste de la parfaite immuabilité des registres. 100% des actions entreprises par l'opérateur connecté [${user?.name || "Analyste SOC"}] ainsi que les changements de statuts sur les ${totalLogs} lignes de logs sont traçables et archivés pour conformité légale.`
+                    title: "Rapport d'audit de conformité",
+                    subtitle: 'Évaluation ISO 27001 et traçabilité SIEM.',
+                    highlights: [
+                        `Score de couverture détection : ${complianceScore}%`,
+                        `${activeRulesCount} / ${totalPossibleRules} règles actives`,
+                        `Opérateur export : ${user?.name || 'Analyste SOC'}`,
+                    ],
+                    section1:
+                        'Le score de conformité technique reflète l’activation des politiques de détection et la complétude des contrôles de journalisation.',
+                    section2:
+                        'Les actions opérateurs et changements de statut sont archivés dans l’Audit Trail pour répondre aux exigences d’auditabilité réglementaire.',
                 };
             }
             default:
-                return {};
+                return { title: '', subtitle: '', highlights: [], section1: '', section2: '' };
         }
     };
 
     const currentReport = generateDynamicContent(selectedReportType);
+    const selectedMeta = REPORT_TYPES.find((r) => r.id === selectedReportType);
 
-    // --- 3. EXPORTATION VIA MODERN-SCREENSHOT & JSPDF ---
     const handleGenerateReport = async () => {
         setIsGenerating(true);
         const element = document.getElementById('report-pdf-content');
 
         try {
-            // modern-screenshot utilise SVG/Canvas natif, aucun problème avec oklch !
             const canvas = await domToCanvas(element, {
                 scale: 2,
-                backgroundColor: '#0f172a'
+                backgroundColor: '#0f172a',
             });
 
             const imgData = canvas.toDataURL('image/jpeg', 0.98);
             const pdf = new jsPDF('p', 'mm', 'a4');
-            
-            // Dimensions exactes A4 avec marges
-            const imgWidth = 186; 
+            const imgWidth = 186;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
             pdf.addImage(imgData, 'JPEG', 12, 12, imgWidth, imgHeight);
-            const reportName = selectedReportType === 'mensuel'
-                ? 'monthly-security-operations-report'
-                : selectedReportType === 'incident'
-                    ? 'post-incident-forensics-report'
-                    : 'compliance-audit-report';
-            pdf.save(`${reportName}-${new Date().toISOString().slice(0,10)}.pdf`);
+            const reportName =
+                selectedReportType === 'mensuel'
+                    ? 'bilan-mensuel-securite'
+                    : selectedReportType === 'incident'
+                      ? 'rapport-post-incident'
+                      : 'rapport-audit-conformite';
+            pdf.save(`${reportName}-${new Date().toISOString().slice(0, 10)}.pdf`);
         } catch (err) {
-            console.error("Erreur lors de la génération du PDF:", err);
+            console.error('Erreur lors de la génération du PDF:', err);
         } finally {
             setIsGenerating(false);
         }
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-4 border-b border-slate-800 pb-5 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-amber-400">
-                        <span className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]"></span>
-                        <span>Rapports exécutifs et exports de conformité</span>
-                    </div>
-                    <h1 className="text-3xl font-black text-white">Rapports Cyber</h1>
-                    <p className="mt-1 text-sm text-slate-400">Générez des résumés PDF élégants pour la direction, la réponse aux incidents et l'examen d'audit.</p>
+        <div className="mx-auto max-w-4xl space-y-8 animate-in fade-in duration-500">
+            <div className="border-b border-slate-800 pb-6">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-amber-400">
+                    <span className="h-2 w-2 rounded-full bg-amber-500" />
+                    <span>Exports PDF</span>
                 </div>
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-300">
-                    Statut : Prêt pour l'export
-                </div>
+                <h1 className="text-3xl font-black text-white">Rapports Cyber</h1>
+                <p className="mt-2 text-sm text-slate-400">
+                    Choisissez un modèle, vérifiez l’aperçu, puis exportez en PDF.
+                </p>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-                <div className="space-y-6">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg">
-                        <h3 className="border-b border-slate-800 pb-2 text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
-                            Configuration d'exportation
-                        </h3>
-                        <div className="mt-4 space-y-4">
-                            <div className="space-y-2">
-                                <label className="block text-[11px] uppercase tracking-[0.25em] text-slate-500">Type de rapport</label>
-                                <select
-                                    value={selectedReportType}
-                                    onChange={(e) => setSelectedReportType(e.target.value)}
-                                    className="w-full cursor-pointer rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs text-slate-200 transition-colors focus:border-amber-500 focus:outline-none"
-                                >
-                                    <option value="mensuel">Résumé mensuel des opérations</option>
-                                    <option value="incident">Rapport technique post-incident</option>
-                                    <option value="compliance">Rapport d'audit de conformité</option>
-                                </select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="block text-[11px] uppercase tracking-[0.25em] text-slate-500">Format de sortie</label>
-                                <div className="rounded-lg border border-slate-900 bg-slate-950 p-2.5 text-xs font-semibold text-emerald-400">
-                                    Document PDF standard
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="block text-[11px] uppercase tracking-[0.25em] text-slate-500">Marquage de sécurité</label>
-                                <span className="inline-block rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold text-red-400">
-                                    Restricté • Usage interne uniquement
-                                </span>
-                            </div>
-                        </div>
-
+            <div className="grid gap-3 sm:grid-cols-3">
+                {REPORT_TYPES.map((type) => {
+                    const isSelected = selectedReportType === type.id;
+                    return (
                         <button
-                            onClick={handleGenerateReport}
-                            disabled={isGenerating}
-                            className={`mt-6 w-full rounded-xl border py-3 text-center text-xs font-semibold uppercase tracking-[0.25em] transition-all ${
-                                isGenerating
-                                    ? 'cursor-wait border-slate-800 bg-slate-900 text-slate-500'
-                                    : 'cursor-pointer border-amber-500/40 bg-amber-600 text-white shadow-lg shadow-amber-950/20 hover:bg-amber-500'
+                            key={type.id}
+                            type="button"
+                            onClick={() => setSelectedReportType(type.id)}
+                            className={`rounded-xl border p-4 text-left transition-all ${
+                                isSelected
+                                    ? 'border-amber-500/50 bg-amber-500/10 shadow-lg shadow-amber-950/10'
+                                    : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
                             }`}
                         >
-                            {isGenerating ? 'Préparation du PDF...' : 'Générer le rapport PDF'}
+                            <p
+                                className={`text-sm font-bold ${isSelected ? 'text-amber-300' : 'text-white'}`}
+                            >
+                                {type.label}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">{type.description}</p>
                         </button>
-                    </div>
+                    );
+                })}
+            </div>
 
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg">
-                        <h3 className="border-b border-slate-800 pb-2 text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
-                            Principaux résultats
-                        </h3>
-                        <ul className="mt-4 space-y-3 text-sm text-slate-300">
-                            <li className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">{criticalCount} alertes critiques restent actives et doivent être examinées en premier.</li>
-                            <li className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">{activeRulesCount} règles de corrélation sont actuellement actives pour la fenêtre de rapport actuelle.</li>
-                            <li className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">L'estimation actuelle du MTTR est d'environ {simulatedMTTR} minutes.</li>
-                        </ul>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 shadow-lg">
+                <div className="flex flex-col gap-3 border-b border-slate-800 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-500">
+                            Aperçu — {selectedMeta?.label}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                            {user?.name || 'Analyste SOC'} · {new Date().toLocaleDateString('fr-FR')}
+                        </p>
                     </div>
-
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg">
-                        <h3 className="border-b border-slate-800 pb-2 text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
-                            Actions recommandées
-                        </h3>
-                        <div className="mt-4 space-y-2">
-                            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">Priorisez le triage pour les événements les plus graves.</div>
-                            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">Validez l'ensemble des règles pour l'exhaustivité avant l'examen par la direction.</div>
-                            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">Archivez le rapport généré après la distribution aux parties prenantes.</div>
-                        </div>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={handleGenerateReport}
+                        disabled={isGenerating}
+                        className={`rounded-lg border px-5 py-2.5 text-xs font-bold uppercase tracking-wide transition-all ${
+                            isGenerating
+                                ? 'cursor-wait border-slate-800 bg-slate-900 text-slate-500'
+                                : 'border-amber-500/40 bg-amber-600 text-white hover:bg-amber-500'
+                        }`}
+                    >
+                        {isGenerating ? 'Génération…' : 'Exporter PDF'}
+                    </button>
                 </div>
 
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg">
-                    <div className="flex flex-col gap-2 border-b border-slate-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                        <h2 className="text-sm font-semibold uppercase tracking-[0.25em] text-white">Aperçu du rapport</h2>
-                        <span className="text-[10px] text-slate-500">Opérateur : {user?.name || 'Analyste SOC'}</span>
-                    </div>
-
-                    <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-center sm:text-left">
-                            <span className="block text-[10px] uppercase tracking-[0.25em] text-slate-500">Volume actuel</span>
-                            <span className="mt-2 block text-2xl font-black text-white">{totalLogs} logs</span>
-                        </div>
-                        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-center sm:text-left">
-                            <span className="block text-[10px] uppercase tracking-[0.25em] text-slate-500">Alertes critiques</span>
-                            <span className="mt-2 block text-2xl font-black text-rose-400">{criticalCount} P1</span>
-                        </div>
-                        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-center sm:text-left">
-                            <span className="block text-[10px] uppercase tracking-[0.25em] text-slate-500">Performance du SOC</span>
-                            <span className="mt-2 block text-2xl font-black text-emerald-400">~{simulatedMTTR} min <span className="text-xs font-normal text-slate-500">MTTR</span></span>
-                        </div>
-                    </div>
-
+                <div className="p-6">
                     <div
                         id="report-pdf-content"
-                        className="mt-6 space-y-6 rounded-2xl border border-slate-800 bg-slate-950/80 p-6 shadow-inner"
+                        className="space-y-5 rounded-xl border border-slate-800 bg-[#020617] p-6"
                         style={{ backgroundColor: '#020617', color: '#cbd5e1' }}
                     >
-                        <div className="absolute inset-0 pointer-events-none opacity-20" style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(34,211,238,0.2), transparent 35%)' }}></div>
-                        <div className="relative space-y-4">
-                            <div className="flex items-start justify-between border-b border-slate-800/80 pb-3 text-[10px] uppercase tracking-[0.25em] text-slate-500">
-                                <span>Centre d'opérations de sécurité</span>
-                                <span>Réf. : SOC-2026-RPT</span>
-                            </div>
+                        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                            <span>SMART SIEM — Cellule CTU</span>
+                            <span>SOC-2026-RPT</span>
+                        </div>
 
-                            <div className="space-y-1 py-2">
-                                <h4 className="text-base font-bold uppercase tracking-[0.25em] text-slate-100">{currentReport.title}</h4>
-                                <p className="text-[11px] text-slate-400">{currentReport.subtitle}</p>
-                            </div>
+                        <div>
+                            <h2 className="text-lg font-bold uppercase tracking-wide text-slate-100">
+                                {currentReport.title}
+                            </h2>
+                            <p className="mt-1 text-sm text-slate-400">{currentReport.subtitle}</p>
+                        </div>
 
-                            <div className="space-y-3 border-t border-slate-800/80 pt-4 text-[11px] leading-relaxed text-slate-300">
-                                <p>{currentReport.section1}</p>
-                                <p>{currentReport.section2}</p>
-                                <div className="mt-4 flex flex-col gap-2 border-t border-slate-800/80 pt-3 text-[10px] uppercase tracking-[0.25em] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                                    <span>Règles actives à l'extraction : {activeRulesCount}</span>
-                                    <span>Classification : Restricté</span>
-                                </div>
-                            </div>
+                        <ul className="space-y-2">
+                            {currentReport.highlights.map((item) => (
+                                <li
+                                    key={item}
+                                    className="flex items-start gap-2 text-sm text-slate-300"
+                                >
+                                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+                                    {item}
+                                </li>
+                            ))}
+                        </ul>
+
+                        <div className="space-y-3 border-t border-slate-800/80 pt-4 text-sm leading-relaxed text-slate-400">
+                            <p>{currentReport.section1}</p>
+                            <p>{currentReport.section2}</p>
+                        </div>
+
+                        <div className="flex flex-col gap-1 border-t border-slate-800/80 pt-3 text-[10px] uppercase tracking-[0.2em] text-slate-600 sm:flex-row sm:justify-between">
+                            <span>Classification : Restricté — usage interne</span>
+                            <span>{totalLogs} logs · {criticalCount} critiques</span>
                         </div>
                     </div>
                 </div>
