@@ -8,6 +8,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.core.config import settings
+from app.modules.rbac.auth import login
 from app.modules.rbac.roles import require_role
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -46,7 +48,7 @@ async def get_all_users(user: dict = Depends(require_role("adminstrator"))):
 
 async def create_user(
     new_user: UserCreate,
-    user: dict = Depends(require_role("administratr"))
+    user: dict = Depends(require_role("administrator"))
 ):
     """
     Crée un nuvel utilisateur.

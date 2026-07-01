@@ -18,6 +18,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from dataset.app import reports
+
 
 #   Path(__file__) est le chemin de ce fichier (config.py) lui-même.
 #   .resolve() le transforme en chemin absolu, pour un calcul fiable peu importe le répertoire de travail
@@ -28,6 +30,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #    partagé par toute l'équipe.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _SHARED_ENV_FILE = _PROJECT_ROOT / ".env"
+
+#   Paths to the different directories needs in the dataset folder
+_DATA_DIR = _PROJECT_ROOT / "dataset"
+_DATA_APP_REPORTS_DIR = _DATA_DIR / "app" / "reports"
+_DATA_SCRIPTS_DIR = _DATA_DIR / "scripts"
+_DATA_TESTS_DIR = _DATA_DIR / "tests"
 
 class Settings(BaseSettings):
     """

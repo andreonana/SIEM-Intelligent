@@ -8,6 +8,8 @@
 
 from fastapi import APIRouter, Depends
 
+from app.core.config import settings
+
 from app.modules.rbac.roles import require_role
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])

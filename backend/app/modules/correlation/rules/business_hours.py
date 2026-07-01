@@ -96,7 +96,7 @@ class BusinessHoursRule(CorrelationRule):
                     CorrelationAlert(
                         rule_name=self.name,
                         severity="CRITICAL",
-                        description=(f"La source '{source_ip}' a établi des connexions hors horaire de travail sur {len(hosts)} machines distinctes ({', '.join(sorted(hosts))}). Sourece bloquée du réseau."),
+                        description=(f"La source '{source_ip}' a établi des connexions hors horaire de travail sur {len(hosts)} machines distinctes ({', '.join(sorted(hosts))}). Source bloquée du réseau."),
                         source_ip=source_ip,
                         related_logs_ids=related_ids,
                         generated_log_severity="critical",

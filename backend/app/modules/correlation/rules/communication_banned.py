@@ -59,9 +59,9 @@ class CommunicationBannedRule(CorrelationRule):
                 continue
 
             #   Construction de l'alerte
-            alerady_alerted.add(pair)
+            already_alerted.add(pair)
 
-            if is_dource_locked and is_host_locked:
+            if is_source_locked and is_host_locked:
                 detail = (f"La source bannie `{source_ip}` tente de communiquer avec l'host banni `{host}`.")
             elif is_source_locked:
                 detail = (f"La source bannie `{source_ip}` tente de communiquer avec `{host}`.")

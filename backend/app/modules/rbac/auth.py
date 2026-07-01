@@ -67,7 +67,7 @@ def create_access_token(user_id: str, username: str, role: str) -> str:
     Example output:
     "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoi..."
     """
-    now = datetime(timezone.utc)
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "username": username,
@@ -109,39 +109,39 @@ def decode_access_token(token: str) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    def login(es_client: Elasticsearch, username: str, password: str):
-        response = es_client.search(
-            index="users",
-            body={
-                "query": {
-                    "term": {"username.keyword": username}
-                }
-            }
-        )
-
-        hits = response["hit"]["hits"]
-
-        if not hits:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username or password"
-            )
-
-        token = create_access_token(
-            user_id=user["id"],
-            username=user["username"],
-            role=user["role"],
-        )
-
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "user": {
-                "id": user["id"],
-                "username": user["username"],
-                "role": user["role"],
+def login(es_client: Elasticsearch, username: str, password: str):
+    response = es_client.search(
+        index="users",
+        body={
+            "query": {
+                "term": {"username.keyword": username}
             }
         }
+    )
+
+    hits = response["hits"]["hits"]
+
+    if not hits:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
+
+    token = create_access_token(
+        user_id=hits[0]["id"],
+        username=hits[0]["username"],
+        role=hits[0]["role"],
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": hits[0]["id"],
+            "username": hits[0]["username"],
+            "role": hits[0]["role"],
+        }
+    }
 
 # ── Bearer Token Extractor ────────────────────────────────
 # This tells FastAPI to look for the token in the

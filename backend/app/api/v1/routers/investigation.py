@@ -19,9 +19,9 @@ async def get_investigation(
     user: dict = Depends(require_role("analyst"))
 ):
     """
-    Retourne la chronologie des évènements liés à une entité donnée (machine ou adresse IP par exemple), pour reconstitution forensique.
-    Rôle requis: analyst ou plus.
-    *** SQUELETTE   ***:    Retourne une structure vide en attendant l'implémentation de la timeline interactive
+        Retourne la chronologie des évènements liés à une entité donnée (machine ou adresse IP par exemple), pour reconstitution forensique.
+        Rôle requis: analyst ou plus.
+        *** SQUELETTE   ***:    Retourne une structure vide en attendant l'implémentation de la timeline interactive
     """
     return {"entity_id": entity_id, "timeline": []}
 
@@ -32,10 +32,10 @@ async def flag_investigation(
     user: dict = Depends(require_role("analyst"))
 ):
     """
-    Retourne un évènement ou une entité comme suspect, pour investigation croisée entre plusieurs analystes.
-    Rôle requis: analyst
-    *** SQUELETTE   ***
-        Confirme la réception de la demande de marquage, sans encore la persister durablement.
+        Retourne un évènement ou une entité comme suspect, pour investigation croisée entre plusieurs analystes.
+        Rôle requis: analyst
+        *** SQUELETTE   ***
+            Confirme la réception de la demande de marquage, sans encore la persister durablement.
     """
     return {
         "entity_id": entity_id,
