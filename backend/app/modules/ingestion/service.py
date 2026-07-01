@@ -101,7 +101,7 @@ async def ingest_single_log_json(raw_json: dict, es_client: AsyncElasticsearch) 
     Lève une ValueError si la normalisation échoue (format de log invalide).
     Lève toute autre exception si la communication avec Elasticsearch échoue (cluster indosponible, mapping incompatible).
     """
-    normalized = normalize_json(raw_json)
+    normalized = normalize_json(raw_json, es_client)
     
     return await _index_normalized_log(normalized, es_client)
 
