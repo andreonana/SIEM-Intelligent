@@ -108,12 +108,12 @@ async def add_exception(
     )
     return config
 
-async def remove_exception(es_client: asyncElasticsearch, exception_date: str,) -> dict:
+async def remove_exception(es_client: AsyncElasticsearch, exception_date: str,) -> dict:
     """
         Supprime une exception ponctuelle pour une date précise.
         Rôle: admin ou plus
     """
-    config = await get_business_hourd_config(es_client)
+    config = await get_business_hours_config(es_client)
     exceptions = config.get("exceptions", {})
     exceptions.pop(exception_date, None)
     config["exceptions"] = exceptions

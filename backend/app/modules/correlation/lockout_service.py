@@ -132,7 +132,7 @@ async def list_all_lockout_history(es_client:AsyncElasticsearch) -> list[dict]:
     """
     try:
         response = await es_client.search(
-            index=_lockout_index(),
+            index=_lockout_index_name(),
             query={"match_all": {}},
             size=100,
             sort=[{"locked_at": {"order": "desc"}}],
@@ -140,4 +140,4 @@ async def list_all_lockout_history(es_client:AsyncElasticsearch) -> list[dict]:
     except Exception:
         return []
 
-    retrun [{"id": hit["_id"], **hit["_source"]} for hit in response["hits"]["hits"]]
+    return [{"id": hit["_id"], **hit["_source"]} for hit in response["hits"]["hits"]]

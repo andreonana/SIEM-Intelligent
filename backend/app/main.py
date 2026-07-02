@@ -22,38 +22,53 @@ load_dotenv(dotenv_path=_SHARED_ENV_FILE)
 # from backend.app.api.v1 import routers
 from fastapi import FastAPI
 
-from app.db.elasticsearch_client import close_es_client
+from app.db.elasticsearch_client    import close_es_client
 
-from app.api.v1.routers.logs import router as logs_router
-from app.api.v1.routers.auth import router as auth_router
-from app.api.v1.routers.health import router as health_router
-from app.api.v1.routers.alerts import router as alerts_router
-from app.api.v1.routers.dashboard import router as dashboard_router
-from app.api.v1.routers.search import router as search_router
-from app.api.v1.routers.investigation import router as investigation_router
-from app.api.v1.routers.soar import router as soar_router
-from app.api.v1.routers.rules import router as rules_router
-from app.api.v1.routers.reports import router as reports_router
-from app.api.v1.routers.users import router as users_router
-from app.api.v1.routers.audit import router as audit_router
+from app.api.v1.routers.logs            import router as logs_router
+from app.api.v1.routers.logs_stream     import router as logs_stream_router
+from app.api.v1.routers.retention       import router as retention_router
+from app.api.v1.routers.business_hours  import router as business_hours_router
+from app.api.v1.routers.entity_unlock   import router as entity_unlock_router
+from app.api.v1.routers.auth            import router as auth_router
+from app.api.v1.routers.health          import router as health_router
+from app.api.v1.routers.alerts          import router as alerts_router
+from app.api.v1.routers.dashboard       import router as dashboard_router
+from app.api.v1.routers.search          import router as search_router
+from app.api.v1.routers.investigation   import router as investigation_router
+from app.api.v1.routers.soar            import router as soar_router
+from app.api.v1.routers.rules           import router as rules_router
+from app.api.v1.routers.reports         import router as reports_router
+from app.api.v1.routers.users           import router as users_router
+from app.api.v1.routers.audit           import router as audit_router
 
-from app.modules.rbac.retention import router as retention_router, start_retention_scheduler
+from app.modules.rbac.retention         import start_retention_scheduler
+from app.modules.correlation.service    import start_correlation_scheduler
+from app.modules.correlation.lifecycle_service  import log_service_startup, log_service_shutdown
+from app.db.elasticsearch_client        import get_es_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Gère les actions à exécuter au démarrage et à l'arrêt du serveur.
-    Tout ce qui se trouve avant l'instruction "yield" s'exécute une seule fois, au démarrage du serveur, avant que la
-     première requête ne soit acceptée. Tout ce qui se trouve après "yield" s'exécute une seule fois, à l'arrêt du serveur.
+        Gère les actions à exécuter au démarrage et à l'arrêt du serveur.
+        Tout ce qui se trouve avant l'instruction "yield" s'exécute une seule fois, au démarrage du serveur, avant que la
+         première requête ne soit acceptée. Tout ce qui se trouve après "yield" s'exécute une seule fois, à l'arrêt du serveur.
+        Séquence de démarrage (avant yield) :
+        1. Démarrage du scheduler de rétention (nettoyage quotidien à 02:00 UTC).
+        2. Démarrage du scheduler de corrélation (scan périodique).
+        3. Log de démarrage du service (lifecycle_service — tag "log hidden").
+    Séquence d'arrêt (après yield) :
+        4. Log d'arrêt du service (lifecycle_service — tag "log hidden").
+        5. Fermeture propre de la connexion Elasticsearch.
     """
     start_retention_scheduler()
-    #   Aucune action n'est nécessaire au démarrage à ce jour:
-    #   La connexion au cluster Elasticsearch est créée automatiqeument, de façon différée, au premier appel réel à
-    #    get_es_client() (db/elasticsearch_client). Il n'y a donc rien à initialiser explicitement ici.
+    start_correlation_scheduler()
+
+    es=get_es_client()
+    await log_service_shutdown(es)
+
     yield
 
-    #   A l'arrêt du serveur, on ferme proprement la connexion ouverte vers Elasticsearch, pour éviter de laisser des connexions
-    #    réseau inutilement ouvertes après l'arrêt de l'application.
+    await log_service_shutdown(es)
     await close_es_client()
 
 app = FastAPI(
@@ -63,68 +78,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-#   Branchement du routeur de logs (endpoints d'ingestion) défini dans backend/app/api/v1/routers/logs.py
-app.include_router(logs_router)
 
-#   *** ENDPOINT LOGIN START    ***
-#
-#   Aucun routeur d'authentification n'est branché ici à ce jour.
-#
-#   Le fichier auth.py gère le login, hachage de passwords et création de tokes JWT.
-#   Une fois le fichier reçu, il devra suivre le même schéma pour logs_router:
-#
-#   from app.modules.rbac.auth import router as auth_router
-#   app.include_router(auth_router)
-#
-#   Nom exact du routeur doit être update à la réception.
-#
-#   *** ENDPOINT LOGIN END  ***
-
-#   *** MODULE RETENTION START  ***
-#
-#   Aucune tâche de rétention/nettoyage automatique n'est branchée ici à
-#    ce jour.
-#
-#   Le fichier retention.py, à recevoir de l'équipe sécurité, expose un
-#    routeur et une fonction de démarrage de planification, à brancher
-#    exactement de la façon suivante une fois ce fichier reçu et placé
-#    dans le projet :
-#
-#   from retention import router as retention_router, start_retention_scheduler
-#
-#   app.include_router(retention_router)
-#
-#   @app.on_event("startup")
-#   def on_startup():
-#       start_retention_scheduler()
-#
-#   Remarque : la syntaxe @app.on_event("startup") est celle indiquée
-#    par l'équipe sécurité pour ce fichier précis. Elle coexiste sans
-#    conflit avec le gestionnaire "lifespan" défini plus haut dans ce
-#    fichier, qui gère par ailleurs la fermeture de la connexion
-#    Elasticsearch — FastAPI accepte les deux mécanismes en parallèle.
-#
-#   *** MODULE RETENTION END    ***
-
-#   Beanchement de tous mles routeurs  de l'API. Chaque routeur définit lui-même son préfixe de chemin.
-app.include_router(auth_router)
+#   Branchement de tous mles routeurs  de l'API. Chaque routeur définit lui-même son préfixe de chemin.
 app.include_router(health_router)
+app.include_router(auth_router)
+app.include_router(logs_router)
+app.include_router(logs_stream_router)
+app.include_router(search_router)
 app.include_router(alerts_router)
 app.include_router(dashboard_router)
-app.include_router(search_router)
-app.include_router(investigation_router)
-app.include_router(soar_router)
-app.include_router(rules_router)
-app.include_router(reports_router)
 app.include_router(users_router)
 app.include_router(audit_router)
-
-#   *** MODULE RETENTION START  ***
-#
-#   Branche l'nedpoint POST /api/admin/retnetion/run, défini directement dnas backend/retention.py protégé
-#    par require_role("administrateur")
+app.include_router(rules_router)
+app.include_router(soar_router)
+app.include_router(investigation_router)
+app.include_router(reports_router)
 app.include_router(retention_router)
-#   *** MODULE RETENTION END    ***
+app.include_router(business_hours_router)
+app.include_router(entity_unlock_router)
+
 
 @app.get("/health")
 async def health_check():

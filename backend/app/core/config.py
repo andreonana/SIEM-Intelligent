@@ -18,8 +18,6 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from dataset.app import reports
-
 
 #   Path(__file__) est le chemin de ce fichier (config.py) lui-même.
 #   .resolve() le transforme en chemin absolu, pour un calcul fiable peu importe le répertoire de travail

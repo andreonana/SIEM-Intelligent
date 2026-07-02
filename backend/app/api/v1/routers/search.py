@@ -8,7 +8,6 @@
 #    exacte sur quelques champs); une recherche plus avancée (plage de dates, opéateurs combinés) pourra être ajoutée par la suite sans 
 #    changer la structure de cet endpoint.
 
-from re import S
 from fastapi import APIRouter, Depends, HTTPException, status
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
@@ -26,7 +25,7 @@ class SearchRequest(BaseModel):
     Tous les champs sont optionnels (seuls ceux fournis par l'user sont utilisés pour filtrer les recherches)
     """
 
-    timestamp:      timestamp   |   None = None
+    keyword:        str | None = None
     source_ip:      str | None = None
     host:           str | None = None
     log_type:       str | None = None
@@ -37,6 +36,7 @@ class SearchRequest(BaseModel):
     extra:          str | None = None
     page:           int = 1
     page_size:      int = 50
+
 
 @router.post("", summary="Recherche multi-critère dans les logs")
 
@@ -59,7 +59,6 @@ async def search_logs(
         return allowed_fields is None or field_name in allowed_fields
 
     for field, value in [
-        ("timestamp", search.timestamp)
         ("source_ip", search.source_ip),
         ("host", search.host),
         ("log_tye", search.log_type),

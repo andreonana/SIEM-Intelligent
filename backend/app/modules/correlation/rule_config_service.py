@@ -25,7 +25,7 @@ KNOWN_RULE_NAMES:   frozenset[str] = frozenset({
 #   Valeur par défaut si aucun document de configuration n'existe pour une règle
 _DEFAULT_ENABLED = True
 
-async def get_rules_config(es_client: AsyncElasticsearch) -> dict[str, dict]:
+async def get_rule_configs(es_client: AsyncElasticsearch) -> dict[str, dict]:
     """
         Retourne la configuration de toutes les règles connues.
         Format de retour:

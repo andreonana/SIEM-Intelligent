@@ -99,7 +99,7 @@ async def normalize(raw_message: str, source: str, es_client: AsyncElasticsearch
     #   Step 4: Classification et construction du réseau final, via _classify_and_build()
     return _classify_and_build(parsed, severity)
 
-async def normalize_json(data: dict, es_client: AsyncElastichsearch) -> NormalizedLog:
+async def normalize_json(data: dict, es_client: AsyncElasticsearch) -> NormalizedLog:
     """
     Point d'entrée alternatif dui module de normalisation, dédié aux logs reçuis sous forme d'obket JSON délà désérialisé (différent de string).
     Utilsée par l'endpoint dédié POST /app/v1/logs/ingest/json, pour les sources qui parlent déjà nativement, évitant ainsi à l'émetteur de devoir

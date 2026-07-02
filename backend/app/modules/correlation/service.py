@@ -259,4 +259,4 @@ def start_correlation_scheduler() -> None:
         replace_existing=True,
     )
     scheduler.start()
-    print(f"[Corrélation] Scheduler démarré. Scan toutes les {settings.correlation_scan_intervla_seconds} secondes.")
+    print(f"[Corrélation] Scheduler démarré. Scan toutes les {settings.correlation_scan_interval_seconds} secondes.")

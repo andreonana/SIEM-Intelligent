@@ -24,6 +24,7 @@ _VALID_STATUSES = {"ouvert", "acquité", "fermé"}
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 @router.get("", summary="Liste des alertes")
 
 async def get_all_alerts(
