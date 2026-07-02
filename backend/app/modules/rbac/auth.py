@@ -5,7 +5,7 @@
 # ============================================================
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -69,7 +69,7 @@ def create_access_token(user_id: str, username: str, role: str) -> str:
         "sub": str(user_id),
         "username": username,
         "role": role,
-        "exp": datetime.utcnow() + timedelta(minutes=EXPIRY_MINUTES)
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=EXPIRY_MINUTES)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -108,4 +108,4 @@ def decode_access_token(token: str) -> dict:
 # ── Bearer Token Extractor ────────────────────────────────
 # This tells FastAPI to look for the token in the
 # "Authorization: Bearer <token>" header of every request
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)

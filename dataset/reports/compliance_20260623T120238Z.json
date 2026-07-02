@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-06-23T12:02:38Z",
+  "integrity_check": {
+    "period": {
+      "from": "2026-05-24T12:02:38Z",
+      "to": "2026-06-23T12:02:38Z"
+    },
+    "log_count": 1000,
+    "sha256": "89c755739fe726d84a71e27992c9fc9293bda82dcb295641d2497d7653d99144",
+    "verified_at": "2026-06-23T12:02:38Z"
+  },
+  "retention_report": {
+    "retention_days": 30,
+    "oldest_log": "2026-06-14T15:36:58.933778+00:00",
+    "newest_log": "2026-06-21T15:03:54.186682+00:00",
+    "total_logs": 1000,
+    "ilm_policy": "siem-logs-policy (non trouvée dans ILM — rétention appliquée manuellement)"
+  },
+  "purges": [],
+  "report_sha256": "bbf7b52806f64d67720a62db7aa4e043a833ee7b017b0e292b72f9bd109d9851"
+}

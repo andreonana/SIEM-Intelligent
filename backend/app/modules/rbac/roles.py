@@ -7,6 +7,7 @@
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
+from typing import Optional
 
 from app.modules.rbac.auth import decode_access_token, bearer_scheme
 
@@ -21,19 +22,27 @@ ROLE_LEVELS = {
 
 # ── Current User Extractor ────────────────────────────────
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
 ) -> dict:
     """
     FastAPI calls this automatically when an endpoint uses it.
     Extracts the JWT from the request header and returns the user info.
-    
+
     Returns a dict like:
     {
         "user_id": "42",
         "username": "chloe",
         "role": "analyst"
     }
+
+    Raises HTTP 401 if the token is absent or invalid.
     """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token d'authentification manquant.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     token = credentials.credentials  # The raw JWT string
     payload = decode_access_token(token)
     
@@ -74,26 +83,25 @@ def require_role(minimum_role: str):
         user_role = user["role"]
 
         if isinstance(minimum_role, list):
-            #   *** Mode liste explicite (extension backend dev)    ***
-            #   Comparaison directe: Le rôle de l'utilisateur doit apparaître tel quel dans la liste fourni,
-            #    sans raisonnement de hiérarchie
+            # Mode liste explicite : le rôle doit apparaître tel quel dans la liste fournie,
+            # sans logique de hiérarchie.
             if user_role not in minimum_role:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=(f"Access denied. Requires one of {minimum_role}. "
-                    f"Your role: '{user.role}'."),
+                    detail=f"Accès refusé. Rôles requis : {minimum_role}. Votre rôle : '{user_role}'.",
                 )
-            #   *** Mode hiérarchique original inchangé.
+            return user
 
-        user_level = ROLE_LEVELS.get(user["role"], 0)
+        # Mode hiérarchique : le niveau du rôle utilisateur doit atteindre le niveau requis.
+        user_level = ROLE_LEVELS.get(user_role, 0)
         required_level = ROLE_LEVELS.get(minimum_role, 99)
-        
+
         if user_level < required_level:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Requires '{minimum_role}' role or higher. "
-                       f"Your role: '{user['role']}'"
+                detail=f"Accès refusé. Rôle requis : '{minimum_role}' ou supérieur. "
+                       f"Votre rôle : '{user_role}'.",
             )
-        return user  # Pass user info to the endpoint function
-    
+        return user
+
     return check_role

@@ -1,119 +1,144 @@
-# ============================================================
-# retention.py — Automatic Log Retention & Cleanup
-# Handles: deleting logs older than RETENTION_DAYS
-# Used by: backend dev includes this router in main.py
-#          and schedules the cleanup job
-# ============================================================
+# backend/app/modules/rbac/retention.py
+#
+# Politique de rétention des logs — purge ES + audit SQL.
+# La durée de rétention est lue depuis settings (RETENTION_DAYS dans .env).
+# L'audit de chaque purge est écrit en base SQL (audit_logs) ET signalé dans les logs applicatifs.
+# Contrôlable via ENABLE_RETENTION_SCHEDULER=false pour les tests.
 
-import os
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from elasticsearch import Elasticsearch
-from fastapi import APIRouter, Depends
+import asyncio
+import logging
+from datetime import datetime, timezone, timedelta
+
 from apscheduler.schedulers.background import BackgroundScheduler
+from elasticsearch import Elasticsearch, NotFoundError
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.db.database import AsyncSessionLocal
 from app.modules.rbac.roles import require_role
+from app.services.audit_service import log_action
 
-load_dotenv()
+logger = logging.getLogger(__name__)
 
-# ── Setup ─────────────────────────────────────────────────
-router = APIRouter()  # Backend dev adds this to main.py
+router = APIRouter()
 
-_es_host = os.getenv("ES_HOST", "localhost")
-_es_port = os.getenv("ES_PORT", "9200")
-es = Elasticsearch(
-    hosts=[f"http://{_es_host}:{_es_port}"],
-)
+INDEX_LOGS = settings.es_logs_index_name
+RETENTION_DAYS = settings.retention_days
 
-INDEX_LOGS  = os.getenv("ES_INDEX_LOGS", "siem-logs")
-INDEX_AUDIT = os.getenv("ES_INDEX_AUDIT", "siem-audit")
-RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "30"))
+# Client Elasticsearch synchrone (APScheduler ne supporte pas l'async natif)
+_es_kwargs: dict = {"hosts": [settings.elasticsearch_url]}
+if settings.elasticsearch_username and settings.elasticsearch_password:
+    _es_kwargs["basic_auth"] = (settings.elasticsearch_username, settings.elasticsearch_password)
+if settings.elasticsearch_ca_cert_path:
+    _es_kwargs["ca_certs"] = settings.elasticsearch_ca_cert_path
+    _es_kwargs["verify_certs"] = True
+else:
+    _es_kwargs["verify_certs"] = False
 
-# ── Core Cleanup Function ─────────────────────────────────
-def run_retention_cleanup() -> dict:
+_es_client: Elasticsearch | None = None
+
+
+def _get_es() -> Elasticsearch:
+    global _es_client
+    if _es_client is None:
+        _es_client = Elasticsearch(**_es_kwargs)
+    return _es_client
+
+
+def run_retention_cleanup(triggered_by: str = "system") -> dict:
     """
-    Deletes all logs older than RETENTION_DAYS from Elasticsearch.
-    Also writes an entry to the audit log so there's a record.
-    
-    Returns a summary dict with how many logs were deleted.
+    Supprime dans Elasticsearch les logs antérieurs à RETENTION_DAYS jours.
+    Écrit l'entrée d'audit en base SQL (via une boucle asyncio dédiée).
+    Retourne un résumé de l'opération.
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
-    
-    print(f"[Retention] Running cleanup. Deleting logs before {cutoff_date.isoformat()}")
-    
-    # Elasticsearch Delete by Query
-    # This deletes every document in siem-logs
-    # where the timestamp is older than our cutoff
-    response = es.delete_by_query(
-        index=INDEX_LOGS,
-        body={
-            "query": {
-                "range": {
-                    "timestamp": {
-                        "lt": cutoff_date.isoformat()
-                    }
-                }
-            }
-        }
-    )
-    
-    deleted_count = response.get("deleted", 0)
-    print(f"[Retention] Deleted {deleted_count} documents.")
-    
-    # Write to audit log — this is the security trail
-    es.index(
-        index=INDEX_AUDIT,
-        document={
-            "action":    "retention_cleanup",
-            "target":    f"{INDEX_LOGS} — logs older than {RETENTION_DAYS} days",
-            "result":    f"deleted {deleted_count} documents",
-            "timestamp": datetime.utcnow().isoformat(),
-            "username":  "system",  # Automated action, not a user
-        }
-    )
-    
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
+    deleted = 0
+    error: str | None = None
+
+    try:
+        es = _get_es()
+        response = es.delete_by_query(
+            index=INDEX_LOGS,
+            body={"query": {"range": {"timestamp": {"lt": cutoff.isoformat()}}}},
+        )
+        deleted = response.get("deleted", 0)
+        logger.info("[retention] Purge terminée : %d documents supprimés (cutoff=%s)", deleted, cutoff.isoformat())
+    except NotFoundError:
+        logger.warning("[retention] Index '%s' introuvable — aucun log à purger.", INDEX_LOGS)
+    except Exception as exc:
+        error = str(exc)
+        logger.error("[retention] Échec de la purge ES : %s", error)
+
+    # Audit SQL — persisté indépendamment de l'état d'Elasticsearch
+    detail = f"cutoff={cutoff.date().isoformat()}, retention={RETENTION_DAYS}j, supprimés={deleted}"
+    if error:
+        detail += f", erreur={error}"
+
+    async def _write_audit() -> None:
+        async with AsyncSessionLocal() as db:
+            await log_action(
+                db,
+                username=triggered_by,
+                action="retention_cleanup",
+                target=INDEX_LOGS,
+                detail=detail,
+                result="failure" if error else "success",
+            )
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_write_audit())
+    finally:
+        loop.close()
+
     return {
-        "deleted": deleted_count,
-        "cutoff": cutoff_date.isoformat(),
-        "retention_days": RETENTION_DAYS
+        "deleted": deleted,
+        "cutoff": cutoff.isoformat(),
+        "retention_days": RETENTION_DAYS,
+        "error": error,
     }
 
-# ── Scheduled Job ─────────────────────────────────────────
-def start_retention_scheduler():
+
+def start_retention_scheduler() -> None:
     """
-    Starts a background job that runs cleanup every day at 2 AM.
-    
-    The backend dev calls this once in main.py:
-        from retention import start_retention_scheduler
-        start_retention_scheduler()
+    Démarre le job APScheduler de purge quotidienne à 02h00.
+    Désactivable via ENABLE_RETENTION_SCHEDULER=false dans .env (utile pour les tests).
     """
+    if not settings.enable_retention_scheduler:
+        logger.info("[retention] Scheduler désactivé (ENABLE_RETENTION_SCHEDULER=false).")
+        return
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         run_retention_cleanup,
         trigger="cron",
         hour=2,
         minute=0,
-        id="daily_retention_cleanup"
+        id="daily_retention_cleanup",
+        kwargs={"triggered_by": "system"},
     )
     scheduler.start()
-    print("[Retention] Scheduler started — cleanup runs daily at 02:00")
+    logger.info("[retention] Scheduler démarré — purge quotidienne à 02:00 UTC.")
 
-# ── Manual Trigger Endpoint ───────────────────────────────
-# This is for the demo: run cleanup on demand without waiting 24h
+
 @router.post(
     "/api/admin/retention/run",
-    summary="Manually trigger log retention cleanup",
-    tags=["Security"]
+    tags=["Security"],
+    summary="Déclenche manuellement la purge de rétention des logs",
 )
-def trigger_retention_manually(
-    user=Depends(require_role("administrator"))
+async def trigger_retention_manually(
+    request: Request,
+    user: dict = Depends(require_role("administrator")),
+    db: AsyncSession = Depends(lambda: None),  # injection db pour l'audit direct
 ):
     """
-    Only administrators can trigger this.
-    Useful for demonstrating the retention policy during the defense.
+    Déclenche la purge de rétention immédiatement.
+    Réservé aux administrators. L'action est auditée en base SQL.
     """
-    result = run_retention_cleanup()
+    result = run_retention_cleanup(triggered_by=user["username"])
     return {
-        "status": "cleanup complete",
+        "status": "purge terminée" if not result["error"] else "purge échouée",
         "triggered_by": user["username"],
-        **result
+        **result,
     }

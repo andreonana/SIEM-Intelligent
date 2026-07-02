@@ -52,8 +52,8 @@ def _classify_and_build(parsed: ParsedLog) -> NormalizedLog:
         timestamp=parsed.timestamp,
         source_ip=parsed.source_ip,
         host=parsed.host,
-        log_type=parsed.log_type,
-        severity=parsed.severity,
+        log_type=log_type,
+        severity=severity,
         raw_message=parsed.raw_message,
         tags=parsed.tags
     )

@@ -1,0 +1,121 @@
+@startuml usecase-frontend
+title Smart SIEM — Diagramme de cas d'utilisation (Frontend)
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Lecteur" as Reader
+actor "Analyste" as Analyst
+actor "Administrateur" as Admin
+actor "RSSI" as CISO
+actor "Auditeur" as Auditor
+
+Reader <|-- Analyst
+Analyst <|-- Admin
+Reader <|-- CISO
+Reader <|-- Auditor
+
+rectangle "Smart SIEM — Frontend" {
+
+  package "Authentification" {
+    usecase "Se connecter (login)" as UC_Login
+    usecase "Valider le code MFA (TOTP)" as UC_MFA
+    usecase "Se déconnecter" as UC_Logout
+  }
+
+  package "Supervision" {
+    usecase "Consulter le dashboard analyste" as UC_Dashboard
+    usecase "Consulter la vue RSSI (synthèse)" as UC_RSSI
+    usecase "Consulter la vue auditeur (conformité)" as UC_Audit_View
+    usecase "Suivre la Crisis Room (temps réel)" as UC_Crisis
+  }
+
+  package "Recherche et Investigation" {
+    usecase "Rechercher des logs multi-critères" as UC_Search
+    usecase "Visualiser la timeline d'un incident" as UC_Timeline
+    usecase "Marquer une entité comme suspecte" as UC_Flag
+    usecase "Exporter des logs (CSV/Excel)" as UC_ExportLogs
+  }
+
+  package "Gestion des alertes" {
+    usecase "Consulter les alertes actives" as UC_Alerts
+    usecase "Acquitter une alerte" as UC_Ack
+    usecase "Résoudre une alerte" as UC_Resolve
+    usecase "Exporter les alertes (CSV/Excel)" as UC_ExportAlerts
+  }
+
+  package "Réponse automatisée (SOAR)" {
+    usecase "Déclencher un playbook (bloquer IP)" as UC_BlockIP
+    usecase "Déclencher un playbook (désactiver compte)" as UC_DisableAccount
+    usecase "Déclencher une escalade admin" as UC_Escalate
+  }
+
+  package "Analyse comportementale (UEBA)" {
+    usecase "Consulter les scores de risque" as UC_UebaScores
+    usecase "Lancer une analyse UEBA" as UC_UebaAnalyze
+  }
+
+  package "Administration" {
+    usecase "Gérer les règles de corrélation" as UC_Rules
+    usecase "Lancer une corrélation manuelle" as UC_RunCorrelation
+    usecase "Gérer les utilisateurs (RBAC)" as UC_Users
+    usecase "Consulter le journal d'audit" as UC_AuditTrail
+    usecase "Consulter la santé de l'infrastructure" as UC_SystemHealth
+  }
+
+  package "Rapports" {
+    usecase "Générer/télécharger un rapport PDF" as UC_Report
+  }
+}
+
+Reader --> UC_Login
+Reader --> UC_MFA
+Reader --> UC_Logout
+Reader --> UC_Dashboard
+Reader --> UC_Search
+Reader --> UC_Alerts
+Reader --> UC_ExportLogs
+Reader --> UC_ExportAlerts
+Reader --> UC_Report
+Reader --> UC_UebaScores
+Reader --> UC_Audit_View
+
+Analyst --> UC_Timeline
+Analyst --> UC_Flag
+Analyst --> UC_Ack
+Analyst --> UC_Resolve
+Analyst --> UC_BlockIP
+Analyst --> UC_DisableAccount
+Analyst --> UC_Escalate
+Analyst --> UC_Crisis
+Analyst --> UC_Rules
+Analyst --> UC_RunCorrelation
+Analyst --> UC_UebaAnalyze
+
+Admin --> UC_Users
+Admin --> UC_AuditTrail
+Admin --> UC_SystemHealth
+
+CISO --> UC_RSSI
+Auditor --> UC_Audit_View
+
+UC_MFA .> UC_Login : <<extend>>\n(si MFA activé)
+UC_BlockIP ..> UC_Alerts : <<include>>
+UC_DisableAccount ..> UC_Alerts : <<include>>
+UC_Escalate ..> UC_Alerts : <<include>>
+UC_Timeline ..> UC_Search : <<extend>>
+
+note right of UC_BlockIP
+  Appelle réellement le service
+  firewall-controller (iptables).
+  Échec explicite si non configuré.
+end note
+
+note right of UC_Rules
+  Ségrégation RBAC : lecture seule
+  pour Lecteur/Analyste, écriture
+  réservée à Administrateur.
+end note
+
+@enduml

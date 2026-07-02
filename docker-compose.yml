@@ -1,0 +1,138 @@
+networks:
+  siem-net:
+    name: projetintegrateur_siem-net
+    external: true
+
+volumes:
+  siem_db:
+    name: projetintegrateur_siem_db
+    external: true
+  es_data:
+    name: projetintegrateur_es_data
+    external: true
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: siem-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - siem-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    image: projetintegrateur-backend
+    container_name: siem-backend
+    entrypoint: []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - .env
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    ports:
+      - "8000:8000"
+    volumes:
+      - siem_db:/app
+    networks:
+      - siem-net
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  firewall-controller:
+    build:
+      context: ./infra/firewall-controller
+    image: projetintegrateur-firewall-controller
+    container_name: siem-firewall-controller
+    # NET_ADMIN est requis pour qu'iptables puisse modifier les règles de
+    # filtrage dans le network namespace de ce conteneur. Sans cette
+    # capability, POST /block renvoie explicitement status=failure
+    # (voir infra/firewall-controller/app.py) — jamais un faux succès.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    ports:
+      - "8080:8080"
+    networks:
+      - siem-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  syslog-receiver:
+    build:
+      context: ./agents/syslog
+    image: projetintegrateur-syslog-receiver
+    container_name: siem-syslog-receiver
+    environment:
+      - SYSLOG_TCP_PORT=5140
+      - SYSLOG_UDP_PORT=5140
+      - BATCH_SIZE=50
+      - FLUSH_INTERVAL=2
+      - BACKEND_URL=http://backend:8000
+      - INGEST_API_KEY=${INGEST_API_KEY}
+    ports:
+      - "5140:5140/tcp"
+      - "5140:5140/udp"
+    networks:
+      - siem-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  forwarder:
+    build:
+      context: ./agents
+    image: projetintegrateur-forwarder
+    container_name: siem-forwarder
+    environment:
+      - LOG_DIR=/logs
+      - BATCH_SIZE=50
+      - POLL_INTERVAL=2
+      - BACKEND_URL=http://backend:8000
+      - INGEST_API_KEY=${INGEST_API_KEY}
+    volumes:
+      - ./infra/log_test:/logs
+    networks:
+      - siem-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: siem-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/certs:/etc/nginx/certs:ro
+    networks:
+      - siem-net
+    depends_on:
+      backend:
+        condition: service_healthy

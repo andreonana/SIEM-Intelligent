@@ -1,0 +1,208 @@
+@startuml class-diagram-frontend
+title Smart SIEM — Diagramme de classes (Frontend : modèle de domaine + architecture des composants)
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+
+package "Modèle de domaine (formes de données consommées par l'UI)" {
+
+  class User {
+    +id: int
+    +username: string
+    +role: "reader"|"analyst"|"administrator"
+    +isActive: boolean
+    +mfaEnabled: boolean
+  }
+
+  class LogEntry {
+    +id: string
+    +timestamp: string
+    +source: string
+    +destination: string
+    +service: string
+    +event: string
+    +severity: "CRITICAL"|"WARNING"|"HIGH"|"INFO"
+    +status: string
+    +payload: string
+  }
+
+  class Alert {
+    +id: string
+    +realId: int
+    +ruleId: string
+    +ruleName: string
+    +severity: string
+    +description: string
+    +status: "open"|"acknowledged"|"resolved"
+    +confidenceScore: float
+    +soarStatus: string
+    +escalated: boolean
+  }
+
+  class CorrelationRule {
+    +id: string
+    +realId: string
+    +name: string
+    +description: string
+    +category: string
+    +severity: string
+    +active: boolean
+    +confidenceScore: float
+    +soarMode: "AUTO"|"CONFIRM"|"MANUAL"
+  }
+
+  class RiskScore {
+    +id: int
+    +entityType: string
+    +entityId: string
+    +score: float
+    +riskLevel: "low"|"medium"|"high"|"critical"
+    +justification: string
+  }
+
+  class InvestigationFlag {
+    +entityId: string
+    +flaggedBy: string
+    +note: string
+    +flaggedAt: string
+  }
+
+  class SystemHealthReport {
+    +overall: string
+    +services: ServiceStatus[]
+    +checkedAt: string
+  }
+
+  class ServiceStatus {
+    +name: string
+    +status: "healthy"|"degraded"|"unavailable"
+    +detail: string
+  }
+
+  Alert "many" o-- "1" CorrelationRule : déclenchée par
+  RiskScore "many" -- "1" InvestigationFlag : peut être marquée
+  SystemHealthReport *-- "many" ServiceStatus
+}
+
+package "Couche service (frontend/src/services/api.js)" {
+  class ApiClient {
+    +login(username, password): Promise
+    +verifyMfa(token, code): Promise
+    +getAlerts(params): Promise<Alert[]>
+    +acknowledgeAlert(id): Promise
+    +resolveAlert(id, note): Promise
+    +exportAlertsCsv(params): Promise<void>
+    +exportAlertsXlsx(params): Promise<void>
+    +getLogs(params): Promise<LogEntry[]>
+    +exportLogsCsv(criteria): Promise<void>
+    +exportLogsXlsx(criteria): Promise<void>
+    +getRules(): Promise<CorrelationRule[]>
+    +toggleRule(ruleId, enabled): Promise
+    +runCorrelation(): Promise
+    +runPlaybook(id, params): Promise
+    +getUebaRiskScores(): Promise<RiskScore[]>
+    +runUebaAnalysis(): Promise
+    +getDashboardData(): Promise
+    +getSystemHealth(): Promise<SystemHealthReport>
+    +getAuditLogs(params): Promise
+    +getUsers(): Promise<User[]>
+    +createUser(payload): Promise
+    +updateUserRole(id, role): Promise
+    +updateUserActive(id, active): Promise
+  }
+}
+
+package "Architecture des composants (App.jsx = racine d'état)" {
+
+  class App {
+    -user: User
+    -activeView: string
+    -logs: LogEntry[]
+    -rules: CorrelationRule[]
+    -dataStatus: "loading"|"ready"|"error"
+    +loadFromApi(): void
+    +renderView(): ReactNode
+  }
+
+  class Sidebar {
+    +activeView: string
+    +user: User
+    +setActiveView(view): void
+    +onLogout(): void
+  }
+
+  class Login {
+    -username: string
+    -password: string
+    -mfaStep: boolean
+    +handleLoginSubmit(): void
+    +handleMfaSubmit(): void
+  }
+
+  abstract class ViewComponent {
+    +user: User
+    +dataStatus: string
+  }
+
+  class Dashboard {
+    +logs: LogEntry[]
+    +serverData: object
+  }
+  class RSSIView
+  class Compliance <<Vue Auditeur>>
+  class LogExplorer {
+    +logs: LogEntry[]
+    +handleExport(format): void
+  }
+  class AlertTriage {
+    +logs: LogEntry[]
+    +setLogs: function
+    +handleExport(format): void
+  }
+  class PlaybooksSOAR {
+    +handleExecuteCountermeasure(cmd, alert): void
+  }
+  class CrisisRoom {
+    +activeIncidents: Alert[]
+    -lastRefreshAt: Date
+  }
+  class RuleManagement {
+    +rules: CorrelationRule[]
+    +toggleRule(id): void
+  }
+  class RoleManagement {
+    +operators: User[]
+  }
+  class AuditTrail
+  class SystemConfig {
+    +health: SystemHealthReport
+  }
+  class UEBA {
+    +riskScores: RiskScore[]
+  }
+  class CyberReports
+
+  App "1" *-- "1" Sidebar
+  App "1" *-- "0..1" Login
+  App "1" *-- "1" ViewComponent : vue active
+
+  ViewComponent <|-- Dashboard
+  ViewComponent <|-- RSSIView
+  ViewComponent <|-- Compliance
+  ViewComponent <|-- LogExplorer
+  ViewComponent <|-- AlertTriage
+  ViewComponent <|-- PlaybooksSOAR
+  ViewComponent <|-- CrisisRoom
+  ViewComponent <|-- RuleManagement
+  ViewComponent <|-- RoleManagement
+  ViewComponent <|-- AuditTrail
+  ViewComponent <|-- SystemConfig
+  ViewComponent <|-- UEBA
+  ViewComponent <|-- CyberReports
+
+  ViewComponent ..> ApiClient : utilise
+  Login ..> ApiClient : utilise
+  App ..> ApiClient : utilise (chargement centralisé)
+}
+
+@enduml

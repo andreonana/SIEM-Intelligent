@@ -1,0 +1,50 @@
+@startuml sequence-block-ip
+title Séquence — Déclenchement du playbook SOAR block_ip (réel, sans simulation)
+
+actor "Analyste" as Analyst
+participant "PlaybooksSOAR.jsx" as UI
+participant "api.js" as Api
+participant "Backend\nPOST /api/soar/playbooks/block_ip/run" as Backend
+participant "firewall-controller\nPOST /block" as Firewall
+database "iptables\n(namespace du conteneur)" as Iptables
+
+Analyst -> UI : sélectionne une alerte + "Bannissement IP"
+UI -> Api : runPlaybook("block_ip", { ip, reason, alert_id })
+Api -> Backend : POST /api/soar/playbooks/block_ip/run
+
+Backend -> Backend : lit FIREWALL_API_URL (settings)
+
+alt FIREWALL_API_URL absent
+  Backend --> Api : { result: { status: "failure",\n  error: "FIREWALL_API_URL non configuré" } }
+  Api --> UI : result
+  UI --> Analyst : affiche "[ÉCHEC] ..." — alerte reste ouverte
+else FIREWALL_API_URL configuré
+  Backend -> Firewall : POST /block { ip, reason }
+  Firewall -> Firewall : valide l'IP (module ipaddress)
+  alt IP invalide
+    Firewall --> Backend : 422 Unprocessable Entity
+    Backend --> Api : { result: { status: "failure", error } }
+    Api --> UI : result
+    UI --> Analyst : affiche "[ÉCHEC] ..."
+  else IP valide
+    Firewall -> Iptables : iptables -I INPUT -s <ip> -j DROP
+    alt iptables échoue (permission, binaire absent)
+      Iptables --> Firewall : returncode != 0
+      Firewall --> Backend : 200 { status: "failure", error }
+      Backend -> Backend : lit resp.json() — ne fait PAS confiance\nau seul code HTTP 200
+      Backend --> Api : { result: { status: "failure", error } }
+      Api --> UI : result
+      UI --> Analyst : affiche "[ÉCHEC] ..."
+    else iptables réussit
+      Iptables --> Firewall : returncode == 0
+      Firewall --> Backend : 200 { status: "blocked", ip }
+      Backend -> Backend : persiste PlaybookExecution(status="success")\n+ log_action(audit)
+      Backend --> Api : { result: { status: "blocked", ip } }
+      Api --> UI : result
+      UI -> UI : marque l'alerte "TRAITÉ"
+      UI --> Analyst : affiche "[SUCCESS] Playbook exécuté : blocked"
+    end
+  end
+end
+
+@enduml

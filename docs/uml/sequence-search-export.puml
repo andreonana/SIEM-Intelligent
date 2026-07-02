@@ -1,0 +1,32 @@
+@startuml sequence-search-export
+title Séquence — Recherche multi-critères et export CSV/Excel
+
+actor "Analyste" as Analyst
+participant "LogExplorer.jsx" as UI
+participant "api.js" as Api
+participant "Backend\nPOST /api/search" as Search
+participant "Backend\nPOST /api/search/export.csv|.xlsx" as Export
+database "Elasticsearch" as ES
+
+Analyst -> UI : saisit filtres (sévérité, IP, mot-clé, plage horaire)
+UI -> Api : searchLogs(criteria)
+Api -> Search : POST /api/search { source_ip, severity, start_date, end_date, ... }
+Search -> Search : _build_query() — construit la requête ES (filtres .keyword)
+Search -> ES : search(index=smart-siem-logs, query, sort=received_at desc)
+ES --> Search : hits[]
+Search --> Api : { total, results }
+Api --> UI : logs filtrés
+UI --> Analyst : affiche le tableau de résultats
+
+Analyst -> UI : clique "Export CSV"
+UI -> Api : exportLogsCsv(criteria)
+Api -> Export : POST /api/search/export.csv (mêmes critères)
+Export -> ES : search(query, size<=5000)
+ES --> Export : hits[]
+Export -> Export : to_csv_bytes(rows, colonnes)
+Export --> Api : 200 (Content-Type: text/csv, fichier binaire)
+Api -> Api : downloadBlob() — déclenche le téléchargement navigateur
+Api --> UI : void
+UI --> Analyst : fichier "smart-siem-logs-export.csv" téléchargé
+
+@enduml

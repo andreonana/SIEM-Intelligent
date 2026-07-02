@@ -1,0 +1,45 @@
+@startuml sequence-login-mfa
+title Séquence — Connexion avec MFA (TOTP)
+
+actor Utilisateur
+participant "Login.jsx" as Login
+participant "api.js\n(ApiClient)" as Api
+participant "Backend\nPOST /api/auth/login" as Auth
+participant "Backend\nPOST /api/auth/mfa/verify" as MfaVerify
+participant "App.jsx" as App
+
+Utilisateur -> Login : saisit identifiant + mot de passe
+Login -> Api : login(username, password)
+Api -> Auth : POST /api/auth/login
+alt Identifiants invalides
+  Auth --> Api : 401 Unauthorized
+  Api --> Login : throw Error
+  Login --> Utilisateur : affiche message d'échec
+else MFA activé pour ce compte
+  Auth --> Api : 200 { mfa_required: true, mfa_token }
+  Api --> Login : { mfa_required, mfa_token }
+  Login -> Login : affiche l'étape MFA
+  Utilisateur -> Login : saisit le code TOTP à 6 chiffres
+  Login -> Api : verifyMfa(mfa_token, code)
+  Api -> MfaVerify : POST /api/auth/mfa/verify
+  alt Code invalide ou expiré
+    MfaVerify --> Api : 401 Unauthorized
+    Api --> Login : throw Error
+    Login --> Utilisateur : "Code MFA invalide"
+  else Code valide
+    MfaVerify --> Api : 200 { access_token }
+    Api --> Login : { access_token }
+    Login -> Login : décode le payload JWT (rôle, sub)
+    Login -> App : onLogin({ name, role })
+    App -> App : loadFromApi() — charge alertes, logs, règles
+    App --> Utilisateur : affiche le Dashboard
+  end
+else Pas de MFA
+  Auth --> Api : 200 { access_token }
+  Api --> Login : { access_token }
+  Login -> App : onLogin({ name, role })
+  App -> App : loadFromApi()
+  App --> Utilisateur : affiche le Dashboard
+end
+
+@enduml
