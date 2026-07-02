@@ -34,11 +34,11 @@ export default function RoleManagement({ user }) {
     const handleCreateUser = (e) => {
         e.preventDefault();
         if (!isAdmin) {
-            alert("❌ [RBAC ERROR] Seul l'administrateur peut enrôler de nouveaux profils.");
+            alert(" [RBAC ERROR] Seul l'administrateur peut enrôler de nouveaux profils.");
             return;
         }
         if (!newUsername || !newName) {
-            alert("⚠️ Veuillez remplir tous les champs.");
+            alert(" Veuillez remplir tous les champs.");
             return;
         }
 
@@ -60,17 +60,17 @@ export default function RoleManagement({ user }) {
         setNewUsername('');
         setNewName('');
 
-        // 📢 Fenêtre critique montrant le secret généré à transmettre à l'employé avant masquage
+        //  Fenêtre critique montrant le secret généré à transmettre à l'employé avant masquage
         alert(
-            `🟢 [PROVISIONING SUCCESS] Profil créé pour ${newOp.name}!\n\n` +
-            `🔑 MOT DE PASSE TEMPORAIRE GÉNÉRÉ :\n👉 ${tempPassword}\n\n` +
-            `💡 À transmette de main à main. L'utilisateur devra obligatoirement réinitialiser ce secret lors de sa première connexion.`
+            ` [PROVISIONING SUCCESS] Profil créé pour ${newOp.name}!\n\n` +
+            ` MOT DE PASSE TEMPORAIRE GÉNÉRÉ :\n ${tempPassword}\n\n` +
+            ` À transmette de main à main. L'utilisateur devra obligatoirement réinitialiser ce secret lors de sa première connexion.`
         );
     };
 
     const handleRoleChange = (operatorId, newRoleLevel) => {
         if (!isAdmin) {
-            alert("❌ [RBAC ERROR] Modification des jetons d'accès refusée.");
+            alert(" [RBAC ERROR] Modification des jetons d'accès refusée.");
             return;
         }
         setOperators(prev => prev.map(op => {
@@ -83,11 +83,11 @@ export default function RoleManagement({ user }) {
 
     const handleDeleteUser = (operatorId, operatorName) => {
         if (!isAdmin) {
-            alert("❌ [RBAC ERROR] Droits de révocations insuffisants.");
+            alert(" [RBAC ERROR] Droits de révocations insuffisants.");
             return;
         }
         if (operatorId === 'OP-01') {
-            alert("❌ Action impossible : Le compte racine de l'administrateur principal ne peut pas être purgé.");
+            alert(" Action impossible : Le compte racine de l'administrateur principal ne peut pas être purgé.");
             return;
         }
         if (confirm(`⚠️ Confirmation : Supprimer définitivement le compte SIEM de ${operatorName} ?`)) {

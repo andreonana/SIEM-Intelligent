@@ -1,62 +1,103 @@
 import { useState } from 'react';
+import { setToken, setRole } from '../services/api';
 
 /**
- * COMPOSANT : Login / Page d'accueil Smart SIEM conforme RBAC
- * @param {Function} onLogin - Fonction de callback pour injecter l'utilisateur dans le state global (App.jsx)
+ * Login Page — Smart SIEM
+ * Works in two modes:
+ * 1. Simulation mode — uses hardcoded test users (for demo)
+ * 2. API mode — calls real backend when available
  */
 export default function Login({ onLogin }) {
-  // États locaux pour le formulaire
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  // État pour afficher/masquer proprement le mode démo/simulation destiné au jury
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
   const [showDemoPanel, setShowDemoPanel] = useState(false);
 
-  /**
-   * COMPTES DE TEST : Alignés STRICTEMENT sur le document de référence des rôles (RBAC)
-   */
+  // ── Test accounts (demo / jury) ─────────────────────────
   const simulationUsers = [
-    { name: "Edgar Stiles", title: "Technicien Réseau", user: "edgar", pass: "ctu2026", role: "reader" },
-    { name: "Chloe O'Brian", title: "Analyste Cyber Senior", user: "chloe", pass: "ctu2026", role: "analyst" },
-    { name: "Bill Buchanan", title: "Directeur de la CTU", user: "bill", pass: "ctu2026", role: "administrator" }
+    {
+      name: "Edgar Stiles",
+      title: "Technicien Réseau",
+      user: "edgar",
+      pass: "ctu2026",
+      role: "reader"
+    },
+    {
+      name: "Chloe O'Brian",
+      title: "Analyste Cyber Senior",
+      user: "chloe",
+      pass: "ctu2026",
+      role: "analyst"
+    },
+    {
+      name: "Bill Buchanan",
+      title: "Directeur de la CTU",
+      user: "bill",
+      pass: "ctu2026",
+      role: "administrator"
+    },
   ];
 
-  /**
-   * GESTIONNAIRE DE CONNEXION (CORRIGÉ : setLoading)
-   */
+  // ── Main login handler ───────────────────────────────────
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true); // ✅ Correction de l'erreur ici (anciennement 'Loading')
+    setLoading(true);
 
-    // Simulation d'un délai réseau de 800ms pour la présentation orale
+    // Step 1 — Try real API first
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'https://localhost:443'}/api/auth/login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        // Store token and role from real API
+        setToken(data.access_token);
+        setRole(data.role);
+        setLoading(false);
+        onLogin({ name: data.username, user: username, role: data.role });
+        return;
+      }
+    } catch  {
+      // API not reachable — fall through to simulation mode
+    }
+
+    // Step 2 — Fallback to simulation mode (demo / jury)
     setTimeout(() => {
       const foundUser = simulationUsers.find(
-        (u) => u.user === username.toLowerCase() && u.pass === password
+        (u) =>
+          u.user === username.toLowerCase() &&
+          u.pass === password
       );
 
       if (foundUser) {
+        // Store role in localStorage for role-based UI
+        localStorage.setItem('siem_role', foundUser.role);
         setLoading(false);
-        // On sauvegarde le rôle exact dans le localStorage
-        localStorage.setItem('role', foundUser.role);
-        onLogin(foundUser); // Envoi des données complètes à App.jsx
+        onLogin(foundUser);
       } else {
         setLoading(false);
-        setError("Authentification échouée. Signature de clé ou rôle invalide.");
+        setError('Authentification échouée. Identifiants invalides.');
       }
     }, 800);
   };
 
-  /**
-   * Raccourci de complétion automatique pour la démo devant le jury
-   */
+  // ── Quick login for demo panel ───────────────────────────
   const handleQuickLogin = (user) => {
     setUsername(user.user);
     setPassword(user.pass);
     setError('');
   };
+
+
+
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(6,182,212,0.12),_transparent_24%),linear-gradient(135deg,_#040814_0%,_#07111f_45%,_#030611_100%)] px-4 py-4 text-slate-100 sm:px-6 lg:px-8 lg:py-6">

@@ -3,6 +3,8 @@ import WorldAttackMap from '../components/WorldAttackMap';
 import alertsData from '../mocks/alerts_mock.json';
 import fallbackLogs from '../mocks/logs_mock.json';
 
+
+
 const timeline = [
   { time: '00h', value: 12, label: 'Nominal' },
   { time: '04h', value: 45, label: 'Pic DDoS' },
