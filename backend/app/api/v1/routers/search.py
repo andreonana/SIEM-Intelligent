@@ -8,6 +8,7 @@
 #    exacte sur quelques champs); une recherche plus avancée (plage de dates, opéateurs combinés) pourra être ajoutée par la suite sans 
 #    changer la structure de cet endpoint.
 
+from re import S
 from fastapi import APIRouter, Depends, HTTPException, status
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
@@ -15,6 +16,7 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.db.elasticsearch_client import get_es_client
 from app.modules.rbac.roles import require_role
+from app.modules.rbac.field_visibility import allowed_search_fields_for_role, filter_documents_for_role
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -29,11 +31,14 @@ class SearchRequest(BaseModel):
     host:           str | None = None
     log_type:       str | None = None
     severity:       str | None = None
+    tags:           list[str]   | None = None
+    date_from:      str | None  = None
+    date_to:        str | None  = None
     extra:          str | None = None
     page:           int = 1
     page_size:      int = 50
 
-@router.post("")
+@router.post("", summary="Recherche multi-critère dans les logs")
 
 async def search_logs(
     search: SearchRequest,
@@ -41,27 +46,53 @@ async def search_logs(
     user: dict = Depends(require_role(["reader", "analyst", "admin"]))
 ):
     """
-    Recherche des logs selon plusieurs critères combinables.
-    Rôle requis: reader ou plus
+        Recherche des logs selon plusieurs critères combinables.
+        Rôle requis: reader ou plus
     """
     #   Construction dynamique des iltres Elasticsearch:
     #       Seuls les critères effectivement fournis par l'appelant sont ajoutés à la requête, les autres sont 
     #        simplement absents (pas de filtre = toutes les valeurs accpetées pour ce champ).
-    filters = []
-    if search.timestamp:
-        filters.append({"term": {"timestamp": search.timestamp}})
-    if search.source_ip:
-        filters.append({"term": {"source_ip": search.source_ip}})
-    if search.host:
-        filters.append({"term": {"host": search.host}})
-    if search.log_type:
-        filters.append({"term": {"log_type": search.log_type}})
-    if search.severity:
-        filters.append({"term": {"severity": search.severity}})
-    if search.extra:
-        filters.append({"term": {"extra": search.extra}})
-    
-    query = {"bool": {"filter": filters}} if filters else {"match_all": {}}
+    allowed_fields = allowed_search_fields_for_role(user["role"])
+    filters: list[dict] = []
+
+    def _field_allowed(field_name: str) -> bool:
+        return allowed_fields is None or field_name in allowed_fields
+
+    for field, value in [
+        ("timestamp", search.timestamp)
+        ("source_ip", search.source_ip),
+        ("host", search.host),
+        ("log_tye", search.log_type),
+        ("severity", search.severity),
+        ("extra", search.extra),
+    ]:
+        if value is not None and _field_allowed(field):
+            filters.append({"term": {field: value}})
+
+    if search.tags and _field_allowed("tags"):
+        for tag in search.tags:
+            filters.append({"term": {"tags": tag}})
+ 
+    if search.date_from or search.date_to:
+        date_range: dict = {}
+        if search.date_from:
+            date_range["gte"] = search.date_from
+        if search.date_to:
+            date_range["lte"] = search.date_to
+        filters.append({"range": {"timestamp": date_range}})
+ 
+    must: list[dict] = []
+    if search.keyword and _field_allowed("raw_message"):
+        must.append({"match": {"raw_message": search.keyword}})
+ 
+    if must and filters:
+        query: dict = {"bool": {"must": must, "filter": filters}}
+    elif must:
+        query = {"bool": {"must": must}}
+    elif filters:
+        query = {"bool": {"filter": filters}}
+    else:
+        query = {"match_all": {}}
 
     from_offset = (search.page - 1) * search.page_size
 

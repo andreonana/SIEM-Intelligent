@@ -7,11 +7,16 @@
 #    génération du token JWT) vit dans auth.py, reçu de l'éqiipe de sécurité et placé à la racine de backend/ .
 #   Ce routeur ne fait que l'exposer comme endpoint HTTP.
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from elasticsearch import AsyncElasticsearch
 
+from app.db.elasticsearch_client import get_es_client
 from app.modules.rbac.auth import create_access_token, verify_password
 from app.modules.rbac.roles import require_role, get_current_user
+from app.modules.users.service import find_by_username
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -29,6 +34,8 @@ class LoginResponse(BaseModel):
     """
     access_token:   str
     token_type:     str = "bearer"
+    role:           str
+    username:       str
 
 #   *** ENDPOINT LOGIN START    ***
 #
@@ -43,42 +50,46 @@ class LoginResponse(BaseModel):
 #    mot de passe haché et son rôle, avant de pouvoir appeler verify_password() puis create_access_token().
 @router.post(
     "/login",
-    response_model=LoginResponse
+    response_model=LoginResponse,
+    summary="Connexion; obtenir un token JWT",
 )
 
-async def login(credentials: LoginRequest):
+async def login(
+    credentials: LoginRequest,
+    es_client:   AsyncElasticsearch = Depends(get_es_client),
+):
     """
-    Authentiie un utilisateur et retourne un token JWT.
-    Endpoint public: Aucune protection par rôle n'est nécessaire ici, puisqu'il permet d'obtenir un token pour s'authentifier sur les
-     autres endpoints protégés.
+        Authentifie un utilisateur et retourne un JWT.
+        Rôle requis : aucun (endpoint public).
+ 
+        Le token doit être fourni dans l'en-tête `Authorization: Bearer <token>` sur tous les endpoints protégés.
     """
-    #   *** SQUELETTE (à compléter une ois la source des utilisateurs conirmée) ***
-    #
-    #   La logiqeu attendue, une ois cette source confirmée, ressemble à:
-    #   user_record = find_user_by_username(credentials.username)
-    #   if user_record is None or not verify_password(
-    #                                           cerdentials.password, user_record["hashed_password"]
-    #                                       ):
-    #     raise HTTPException(
-    #           statusçcode=HTTP_401_UNAUTHORIZED,
-    #           detail="Identifiant ou mot de pase incorrect.",
-    #       )
-    #   token = create_access_token(
-    #       user_id=user_record["id"],
-    #       username=user_record["username"],
-    #       role=user_record["role"],
-    #   )
-    #   return LoginResponse(access_token=token)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail=(
-            "Connexion non encore branchée: La source de vérité des utilisateurs (où chercher username/password haché/rôle) doit être "
-            "confirmée avant de compléter cet endpoint."
-        ),
+    user_record = await find_by_username(es_client, credentials.username)
+ 
+    # Message identique qu'il s'agisse d'un username inconnu ou d'un mauvais mot de passe
+    # → ne pas révéler quelle des deux informations est incorrecte.
+    if user_record is None or not verify_password(
+        credentials.password, user_record.get("hashed_password", "")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Identifiant ou mot de passe incorrect.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+ 
+    token = create_access_token(
+        user_id=user_record["id"],
+        username=user_record["username"],
+        role=user_record["role"],
     )
-#   *** ENDPOINT LOGIN END  ***
+ 
+    return LoginResponse(
+        access_token=token,
+        role=user_record["role"],
+        username=user_record["username"],
+    )
 
-@router.post("/logout")
+@router.post("/logout", summary="Déconnexion")
 async def logout(user: dict = Depends(require_role("reader"))):
     """
     Déconnecte l'utilisateur courant.
@@ -87,4 +98,17 @@ async def logout(user: dict = Depends(require_role("reader"))):
      mécanisme nati de révocation côté serveur dans le ichier auth.py reçu. Ct endpoint confirme donc la déconnexion côté client (qui doit 
      supprimer le token stocké de son côté), mais ne invalide pas le token côté serveur.
     """
-    return {"status": "déconnecté", "username": user["username"]}
+    return {"status": "déconnecté", "username": user["username"], "logged_out_at": datetime.now(timezone.utc).isoformat(),}
+
+@router.get("/me", summary="Profil de l'utilisateur courant")
+async def get_me(user: dict = Depends(require_role("reader")), es_client: AsyncElasticsearch = Depends(get_es_client),):
+    """
+        Retourne les informations de l'utilisateur connecté (sans mot de passe haché).
+        Rôle requis : reader ou plus.
+    """
+    record = await find_by_username(es_client, user["username"])
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable.")
+ 
+    record.pop("hashed_password", None)
+    return record

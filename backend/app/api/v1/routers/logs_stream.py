@@ -21,13 +21,14 @@ import json
 from fastapi import APIRouter, Depends, Request
 from fastapi.sse import EventSourceResponse
 from elasticsearch import AsyncElasticsearch
+from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
 from app.db.elasticsearch_client import get_es_client
 from app.modules.rbac.roles import require_role
 from app.modules.rbac.field_visibility import filter_document_for_role
 
-router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
+router = APIRouter(prefix="/api/v1/logs", tags=["logs-stream"])
 
 _POLL_INTERNAL_SECONDS = 1
 
@@ -80,20 +81,23 @@ async def _log_event_generator(
             #    (simple indicateur pour le frontend)
             visible_document["highlight"] = document.get("severity") == "critical"
 
-            yield {"event": "log", "data": json.dumps(visible_document, default=str)}
+            payload = f"event: log\ndata: {json.dumps(visible_document, default=str)}\n\n"
+            yield payload
 
         await asyncio.sleep(_POLL_INTERNAL_SECONDS)
 
-    @rputer.get("/stream")
+    @router.get("/stream",
+        summary="Flux de logs en temps réel (SSE)",
+        )
     async def stream_logs(request: Request, 
         es_client: AsyncElasticsearch = Depends(get_es_client), 
         #   Accessible aux 3 rôles: Canal de lecture en temps réel
         user: dict = Depends(require_role("reader")),
         ):
         """
-        Flux de logs en temps réel, via Server-Sent Events.
-        Rôle requis: reader ou plus
-        Le client se connecte une seule fois et reçoit chaque nouveau log au fil de son ingestion, sans avoir à réinterroger l'endpoint.
-        Les logs de severity "critical" portent un champ "hightligh": true pour signaler au frontend qu'ils doivent être mis en avant.
+            Flux de logs en temps réel, via Server-Sent Events.
+            Rôle requis: reader ou plus
+            Le client se connecte une seule fois et reçoit chaque nouveau log au fil de son ingestion, sans avoir à réinterroger l'endpoint.
+            Les logs de severity "critical" portent un champ "hightligh": true pour signaler au frontend qu'ils doivent être mis en avant.
         """
-        return EventSourceResponse(_log_event_generator(request, es_client, user["role"]))
+        return EventSourceResponse(_log_event_generator(request, es_client, user["role"]), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",},)

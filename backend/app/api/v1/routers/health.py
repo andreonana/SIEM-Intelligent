@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api", tags=["health"])
 @router.get("/health")
 async def api_health_check():
     """
-    Endpoint de santé public, accessible sans authentification.
-    Rêle requis: Public (aucun depends() de protection).
+        Endpoint de santé public, accessible sans authentification.
+        Rôle requis: `public` (aucun `depends()` de protection).
     """
     return {"status": "ok"}
