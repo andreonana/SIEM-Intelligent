@@ -2,89 +2,181 @@
 #
 #   Ce fichier définit les endpoints de gestion des règles de corrélation (consultationpar les analystes, 
 #    création/modification/suppression réservé aux administrateurs).
-#   *** STATUT: SQUELETTE ONCTIONNEL    ***
+#
+#   *** STATUT: SQUELETTE FONCTIONNEL    ***
 #   Le module modules/correlation responsable de ces règles contre les logs entrants n'est pas encore implémenté.
 #   Ces endpoints de gestion (CRUD) sont en place avec leur RBAC actif, en atendant cette implémentation.
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from datetime import datetime, timezone
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from elasticsearch import AsyncElasticsearch
+
+from app.core.config import settings
+from app.db.elasticsearch_client import get_es_client
+from app.modules.correlation.rule_config_service import KNOWN_RULE_NAMES, get_rule_config, get_rules_config, set_rule_enabled
 from app.modules.rbac.roles import require_role
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 
-class RuleCreate(BaseModel):
-    """
-    Corps de la requête de création d'une règle de corrélation.
-    """
-    name:           str
-    description:    str = ""
-    rule_type:      str                                 #   "threshold" ou "pattern"
+_PROTECTED_RULE_NAMES:  frozenset[str] = frozenset({
+    "log_hidden",
+    "lifecycle_service",
+    "lifecycle",
+})
 
-@router.get("")
+#class RuleCreate(BaseModel):
+ #   """
+#  Corps de la requête de création d'une règle de corrélation.
+ #   """
+  #  name:           str
+   # description:    str = ""
+    #rule_type:      str                                 #   "threshold" ou "pattern"
 
-async def get_all_rules(user: dict = Depends(require_role("analyst"))):
+def _guard_protected(rule_name: str) -> None:
     """
-    Retourne la liste des règles de corrélation configurées.
-    Rôle requis: analyst ou plus.
-    *** SQUELETTE   ***
-        Retourne un eliste vide en manque de données dans le module de corrélation.
+        Lève HTTP 403 si le nom de règle correspond au service de cycle de vie protégé. 
     """
-    return {"total": 0, "rules": []}
+    if rule_name in _PROTECTED_RULE_NAMES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(f"La règle `{rule_name}` est liée au service de cycle de vie du SIEM (tag'log hidden'). Elle garantit la traçabilité des arrêts et redémarrage du système et ne peut pas être désactivée."),
+        )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.get("", summary="Liste des règles de corrélation et leur état")
 
-async def create_rule(
-    rule: RuleCreate,
-    user: dict = Depends(require_role("administrator"))
-):
+async def get_all_rules(es_client: AsyncElasticsearch = Depends(get_es_client), user: dict = Depends(require_role("analyst"))):
     """
-    Crée une nouvelle règle de corrélation.
-    Rôle requis: administrator
-    *** SQUELETTE   ***
-        Confirme la réception sans encore persister la règle durablement.
+        Retourne la liste des règles de corrélation configurées.
+        Rôle requis: analyst ou plus.
+        *** SQUELETTE   ***
+            Retourne une liste vide en manque de données dans le module de corrélation.
     """
-    return {
-        "status": "règle créée (persistance à venir)",
-        "name": rule.name,
-        "rule_type": rule.rule_type,
-        "created_by": user["username"],
+    configs = await get_rules_config(es_client)
+
+    rules = []
+    descriptions = {
+        "bruteforce_threshold":     "Détecte les attaques par force brute (N échecs d'authenification en fenêtre de temps).",
+        "business_hours_violation": "Détecte les connexions hors horaires de travail configurés.",
+        "unknown_netword":          "Détecte les connexions depuis une source absente de l'inventaire du réseau.",
+        "communication_banned":     "Détecte toutes tentatives de communication impliquant une entité en quarantaine.",
+        "unauthorized_privileges":  "Détecte les changements de rôle non autorisés entre deux sessions.",
     }
 
+    for rule_name in sorted(KNOWN_RULE_NAMES):
+        cfg = configs.get(rule_name, {})
+        rules.append({
+            "rule_name":        rule_name,
+            "enabled":          cfg.get("enabled", True),
+            "description":      descriptions.get(rule_name, ""),
+            "updated_by":       cfg.get("updated_by"),
+            "updated_at":       cfg.get("updated_at"),
+        })
 
-@router.post("/{rule_id}")
+    return {"total": len(rules), "rules": rules}
 
-async def update_rule(
-    rule_id:        str,
-    rule:           RuleCreate,
-    user:           dict = Depends(require_role("administrator")),
+
+@router.get("/{rule_name}", summary="État d'une règle de corrélation")
+async def get_rule(
+    rule_name: str,
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    user:      dict = Depends(require_role("analyst")),
 ):
     """
-    Modifie une règle de corrélation existante.
-    Rôle requis: administrator
-    *** SQUELETTE   ***
-        Retourne une erreur 404, si aucune règle réelle n'existe encore dans le système.
+    Retourne l'état actuel (activée / désactivée) d'une règle précise.
+    Rôle requis : analyst ou plus.
     """
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=(f"Aucune règle trouvée avec l'identifiant '{rule_id}'."),
-    )
-
-
-@router.delete("/{rule_id}")
-
-async def delete_rule(
-    rule_id:    str,
-    user:       dict = Depends(require_role("administrator"))
+    _guard_protected(rule_name)
+ 
+    if rule_name not in KNOWN_RULE_NAMES:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Règle inconnue : '{rule_name}'. Règles disponibles : {sorted(KNOWN_RULE_NAMES)}.",
+        )
+ 
+    cfg = await get_rule_config(es_client, rule_name)
+    return cfg
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+#   Activation / Désactivation  (administrator uniquement)
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+@router.put(
+    "/{rule_name}/activate",
+    summary="Activer une règle de corrélation",
+)
+async def activate_rule(
+    rule_name: str,
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    user:      dict = Depends(require_role("administrator")),
 ):
     """
-    Supprime une règle de corrélation.
-    Rôle requis:    administrator
-    *** SQUELETTE   ***
-        Retourne uen erreur 404, pour la même raiseon que update_rule() ci-haut.
+    Active une règle de corrélation.
+    L'activation prend effet immédiatement au prochain cycle de scan (sans redémarrage).
+    Rôle requis : administrator.
+ 
+    Règle protégée : le service lifecycle ('log hidden') ne peut pas être activé /
+    désactivé via cet endpoint — il est toujours actif par conception.
     """
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=(f"Aucune règle trouvée avec l'identifiant '{rule_id}'."),
-    )
+    _guard_protected(rule_name)
+ 
+    try:
+        result = await set_rule_enabled(
+            es_client,
+            rule_name=rule_name,
+            enabled=True,
+            updated_by=user["username"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+ 
+    return {
+        "message":    f"Règle '{rule_name}' activée.",
+        "rule_name":  result["rule_name"],
+        "enabled":    result["enabled"],
+        "updated_by": result["updated_by"],
+        "updated_at": result["updated_at"],
+    }
+ 
+ 
+@router.put(
+    "/{rule_name}/deactivate",
+    summary="Désactiver une règle de corrélation",
+)
+async def deactivate_rule(
+    rule_name: str,
+    es_client: AsyncElasticsearch = Depends(get_es_client),
+    user:      dict = Depends(require_role("administrator")),
+):
+    """
+    Désactive une règle de corrélation.
+    La règle cesse de produire des alertes dès le prochain cycle de scan.
+    Rôle requis : administrator.
+ 
+    Règle protégée : le service lifecycle ('log hidden') EST GARANTI ACTIF en permanence
+    et ne peut pas être désactivé — c'est une mesure d'intégrité du SIEM.
+    """
+    _guard_protected(rule_name)
+ 
+    try:
+        result = await set_rule_enabled(
+            es_client,
+            rule_name=rule_name,
+            enabled=False,
+            updated_by=user["username"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+ 
+    # Trace supplémentaire dans l'audit pour les désactivations
+    # (déjà écrite par set_rule_enabled, mais on confirme ici dans la réponse)
+    return {
+        "message":    f"Règle '{rule_name}' désactivée.",
+        "rule_name":  result["rule_name"],
+        "enabled":    result["enabled"],
+        "updated_by": result["updated_by"],
+        "updated_at": result["updated_at"],
+    }
+ 

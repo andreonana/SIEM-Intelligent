@@ -7,7 +7,7 @@
 #   Cet endpoint expose la lecture de ces entrées déjà produites. La journalisation des autres actions utilisateurs (connexion,
 #    déconnexion, consultation déalerte...) n'est pas encore implémentée
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from elasticsearch import AsyncElasticsearch
 
 from app.core.config import settings
@@ -16,19 +16,29 @@ from app.modules.rbac.roles import require_role
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
-@router.get("")
+@router.get("", summary="Journal d'audit système")
 
 async def get_audit_log(
-    page: int = 1,
-    page_size: int = 50,
-    es_client: AsyncElasticsearch = Depends(get_es_client),
-    user: dict = Depends(require_role("adminstrator")),
+    page:       int = Query(1, ge=1),
+    page_size:  int = Query(50, ge=1, le=200),
+    action:     str = Query(
+        None,
+        description=("Filtrer par type d'action: retention_cleanup | rule_config_update | retention_trigger | manual_retention_trigger | entity_unlock | tag_severity_update | ..."),
+    ),
+    es_client:  AsyncElasticsearch = Depends(get_es_client),
+    user:       dict = Depends(require_role("administrator")),
 ):
     """
-    Retourne le journale d'audit des actions effectuées dans le système, du plus récent au plus ancien.
-    Rôle requis: adminstrator
+        Retourne le journal d'audit des actions effectuées dans le système, du plus récent au plus ancien.
+        Rôle requis: administrator
     """
     from_offset = (page - 1)*page_size
+
+    filters: list[dict] = []
+    if action:
+        filters.append({"term": {"action": action}})
+    
+    query = {"bool": {"filter": filters}} if filters else {"match_all": {}}
 
     try:
         response = await es_client.search(
@@ -44,9 +54,13 @@ async def get_audit_log(
             detail=f"Erreur de communication avec Elasticsearch: {exc}",
         ) from exc
 
-    hits = response["hits"]["hits"]
-    total = response["hits"]["total"]["value"]
-
+    hits    = response["hits"]["hits"]
+    total   = response["hits"]["total"]["value"]
     entries = [{"id": hit["_id"], **hit["_source"]} for hit in hits]
 
-    return {"total": total, "page": page, "page_size": page_size, "entries": entries}
+    return {
+        "total":        total, 
+        "page":         page, 
+        "page_size":    page_size, 
+        "entries":      entries,
+    }
