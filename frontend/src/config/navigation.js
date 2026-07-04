@@ -15,7 +15,7 @@
  */
 
 const READER_EXCLUSIVE = ['compliance'];
-const ANALYST_EXCLUSIVE = ['dashboard', 'logs', 'alerts', 'playbooks', 'ueba', 'crisis', 'rules', 'reports'];
+const ANALYST_EXCLUSIVE = ['dashboard', 'logs', 'investigation', 'alerts', 'playbooks', 'ueba', 'crisis', 'rules', 'reports'];
 const ADMIN_EXCLUSIVE = ['rssi', 'roles', 'audit', 'sysconfig'];
 
 /** Calcule les rôles autorisés pour un identifiant de vue donné selon le
@@ -41,6 +41,7 @@ export const MENU_SECTIONS = [
     title: 'Investigation',
     items: [
       { id: 'logs', name: 'Explorateur de logs', allowedRoles: allowedRolesFor('logs') },
+      { id: 'investigation', name: 'Investigation', allowedRoles: allowedRolesFor('investigation') },
       { id: 'alerts', name: 'Triage des alertes', allowedRoles: allowedRolesFor('alerts') },
       { id: 'playbooks', name: 'Playbooks SOAR', allowedRoles: allowedRolesFor('playbooks') },
       { id: 'ueba', name: 'Analyse comportementale', allowedRoles: allowedRolesFor('ueba') },

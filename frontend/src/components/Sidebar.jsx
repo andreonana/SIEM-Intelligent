@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Gauge, SearchCode, TriangleAlert, Workflow, Radar,
+  LayoutDashboard, Gauge, SearchCode, Fingerprint, TriangleAlert, Workflow, Radar,
   Siren, ShieldCheck, FileBarChart, KeyRound, ListChecks, ScrollText,
   Settings2, Sun, Moon, LogOut, ShieldHalf,
 } from 'lucide-react';
@@ -8,7 +8,7 @@ import { MENU_SECTIONS } from '../config/navigation';
 /** Icônes associées à chaque identifiant de vue (la structure/permissions
  *  proviennent de la source unique config/navigation.js). */
 const ICONS = {
-  dashboard: LayoutDashboard, rssi: Gauge, logs: SearchCode, alerts: TriangleAlert,
+  dashboard: LayoutDashboard, rssi: Gauge, logs: SearchCode, investigation: Fingerprint, alerts: TriangleAlert,
   playbooks: Workflow, ueba: Radar, crisis: Siren, compliance: ShieldCheck,
   reports: FileBarChart, roles: KeyRound, rules: ListChecks, audit: ScrollText,
   sysconfig: Settings2,

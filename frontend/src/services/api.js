@@ -124,12 +124,22 @@ export async function getLogs(params = {}) {
   return data.logs || [];
 }
 
+/**
+ * Recherche multi-critères réelle (POST /api/search) — source de vérité pour
+ * l'Explorateur de logs. Retourne l'enveloppe complète (total/page/page_size)
+ * pour permettre une vraie pagination côté UI, pas seulement le tableau.
+ */
 export async function searchLogs(criteria = {}) {
   const data = await req('/api/search', {
     method: 'POST',
     body: JSON.stringify(criteria),
   });
-  return data.logs || data.results || [];
+  return {
+    total: data.total ?? 0,
+    page: data.page ?? 1,
+    page_size: data.page_size ?? criteria.page_size ?? 25,
+    results: data.results || data.logs || [],
+  };
 }
 
 export async function exportLogsCsv(criteria = {}) {
@@ -146,6 +156,26 @@ export async function exportLogsXlsx(criteria = {}) {
     { method: 'POST', body: JSON.stringify(criteria) },
     'smart-siem-logs-export.xlsx',
   );
+}
+
+// ─── Investigation ────────────────────────────────────────────────────────────
+/** Chronologie réelle d'une entité (IP source ou host), triée chronologiquement. */
+export async function getInvestigation(entityId) {
+  return req(`/api/investigation/${encodeURIComponent(entityId)}`);
+}
+
+/** Marque une entité comme suspecte (persisté en base, traçable dans l'audit). */
+export async function flagInvestigation(entityId, note = '') {
+  return req(`/api/investigation/${encodeURIComponent(entityId)}/flag`, {
+    method: 'POST',
+    body: JSON.stringify({ note: note || null }),
+  });
+}
+
+/** Historique des marquages existants pour une entité donnée. */
+export async function getInvestigationFlags(entityId) {
+  const data = await req(`/api/investigation/${encodeURIComponent(entityId)}/flags`);
+  return data.flags || [];
 }
 
 // ─── Rules ────────────────────────────────────────────────────────────────────
@@ -244,8 +274,11 @@ export async function getEntityRisk(entityType, entityId) {
   return req(`/api/ueba/entities/${entityType}/${entityId}/risk`);
 }
 
-export async function runUebaAnalysis() {
-  return req('/api/ueba/analyze', { method: 'POST' });
+export async function runUebaAnalysis(entityType = 'source_ip') {
+  return req('/api/ueba/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ entity_type: entityType }),
+  });
 }
 
 // ─── Reports ──────────────────────────────────────────────────────────────────

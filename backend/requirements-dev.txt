@@ -7,3 +7,6 @@ asyncpg>=0.29.0
 python-jose[cryptography]>=3.3.0
 elasticsearch[async]>=9.0.0
 passlib
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.27.0

@@ -5,6 +5,7 @@ import Login from './views/Login';
 import Dashboard from './views/Dashboard';
 import RSSIView from './views/RSSIView';
 import LogExplorer from './views/LogExplorer.jsx';
+import InvestigationView from './views/InvestigationView';
 import AlertTriage from './views/AlertTriage';
 import PlaybooksSOAR from './views/PlaybooksSOAR';
 import CrisisRoom from './views/CrisisRoom';
@@ -23,6 +24,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [activeView, setActiveView] = useState('dashboard');
   const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false);
+  // Cible de pivot investigation (IP source ou host) transmise depuis
+  // l'Explorateur de logs — consommée une fois par InvestigationView.
+  const [investigationTarget, setInvestigationTarget] = useState(null);
   const [isLightMode, setIsLightMode] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('theme') === 'light';
@@ -109,6 +113,13 @@ export default function App() {
     setSessionExpiredNotice(false);
   };
 
+  // Pivot investigation : bascule vers la vue Investigation avec l'entité ciblée.
+  const handleInvestigate = (entityId) => {
+    if (!entityId) return;
+    setInvestigationTarget(entityId);
+    setActiveView('investigation');
+  };
+
   const handleLogout = async () => {
     await logout();
     setUser(null);
@@ -124,7 +135,15 @@ export default function App() {
       case 'rssi':
         return <RSSIView user={user} logs={logs} rules={rules} />;
       case 'logs':
-        return <LogExplorer user={user} logs={logs} dataStatus={dataStatus} />;
+        return <LogExplorer user={user} onInvestigate={handleInvestigate} />;
+      case 'investigation':
+        return (
+          <InvestigationView
+            user={user}
+            initialEntityId={investigationTarget}
+            onConsumeInitialEntity={() => setInvestigationTarget(null)}
+          />
+        );
       case 'alerts':
         return <AlertTriage user={user} logs={logs} setLogs={setLogs} onRefresh={loadFromApi} dataStatus={dataStatus} />;
       case 'playbooks':

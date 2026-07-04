@@ -5,14 +5,27 @@ import { PageHeader, Card, Badge, Button, StatCard, LoadingState, EmptyState, Re
 
 const RISK_TONE = { critical: 'CRITICAL', high: 'HIGH', medium: 'WARNING', low: 'SUCCESS' };
 const SEVERITY_TONE = { CRITICAL: 'CRITICAL', HIGH: 'HIGH', MEDIUM: 'WARNING', LOW: 'SUCCESS' };
+const ENTITY_TYPES = [
+    { value: 'source_ip', label: 'IP source' },
+    { value: 'host', label: 'Hôte' },
+    { value: 'user', label: 'Utilisateur' },
+];
+const inputStyle = { background: 'var(--surface-2)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' };
 
-/** Analyse comportementale (UEBA) — score de risque dynamique par entité et anomalies détectées. */
+/**
+ * Analyse comportementale (UEBA) — score de risque dynamique par entité et
+ * anomalies détectées. Le backend supporte 3 types d'entité (source_ip, host,
+ * user) ; le sélecteur permet réellement de choisir lequel analyser — sans
+ * lui, seul "source_ip" était jamais utilisé, empêchant tout hôte local
+ * (ex: un poste de travail) d'apparaître dans les résultats.
+ */
 export default function UEBA({ user }) {
     const [riskScores, setRiskScores] = useState([]);
     const [anomalies, setAnomalies] = useState([]);
     const [selectedEntity, setSelectedEntity] = useState(null);
     const [loading, setLoading] = useState(true);
     const [analyzing, setAnalyzing] = useState(false);
+    const [entityType, setEntityType] = useState('source_ip');
 
     const isAdmin = user?.role === 'administrator' || user?.role === 'analyst';
 
@@ -35,7 +48,7 @@ export default function UEBA({ user }) {
         if (!isAdmin) return;
         setAnalyzing(true);
         try {
-            await runUebaAnalysis();
+            await runUebaAnalysis(entityType);
             await load();
         } catch (err) {
             alert(`Erreur : ${err.message}`);
@@ -55,7 +68,21 @@ export default function UEBA({ user }) {
                 eyebrow="Investigation"
                 title="Analyse comportementale"
                 description="Score de risque dynamique par entité et détection d'anomalies."
-                actions={<Button variant="primary" onClick={handleRunAnalysis} disabled={!isAdmin || analyzing}>{analyzing ? 'Analyse en cours...' : 'Lancer une analyse'}</Button>}
+                actions={
+                    <>
+                        <select
+                            value={entityType} onChange={(e) => setEntityType(e.target.value)}
+                            disabled={!isAdmin || analyzing}
+                            className="rounded-lg border px-3 py-2 text-sm"
+                            style={inputStyle}
+                        >
+                            {ENTITY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                        <Button variant="primary" onClick={handleRunAnalysis} disabled={!isAdmin || analyzing}>
+                            {analyzing ? 'Analyse en cours...' : 'Lancer une analyse'}
+                        </Button>
+                    </>
+                }
             />
 
             {!isAdmin && <ReadOnlyNotice role={user?.role} action="déclencher une analyse UEBA" />}
