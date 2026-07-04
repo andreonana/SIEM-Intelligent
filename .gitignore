@@ -51,6 +51,14 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Bases de données locales (SQLite) — jamais versionnées : la base réelle vit
+# dans le volume Docker nommé "siem_db", pas sur le disque du projet. D'anciens
+# instantanés (backend/siem.db, siem.db) avaient été commités par erreur et
+# prêtaient à confusion avec la vraie base vivante.
+*.db
+*.sqlite
+*.sqlite3
+
 # Data / Uploads
 data/
 uploads/
