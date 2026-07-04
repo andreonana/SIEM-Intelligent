@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart SIEM — Démo DATA S2</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.2rem; color: #f0f6fc; }
+    header span { font-size: 0.75rem; background: #21262d; border: 1px solid #30363d; padding: 2px 8px; border-radius: 12px; color: #8b949e; }
+
+    main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 1px solid #30363d; }
+    .tab-btn {
+      background: none; border: none; color: #8b949e; padding: 0.6rem 1.2rem;
+      cursor: pointer; font-size: 0.9rem; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: #f0f6fc; border-bottom-color: #1f6feb; }
+    .tab-btn:hover:not(.active) { color: #c9d1d9; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 { font-size: 0.9rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem; }
+
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 0.8rem; color: #8b949e; }
+    input, select {
+      background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+      color: #c9d1d9; padding: 0.45rem 0.65rem; font-size: 0.875rem;
+      outline: none; transition: border-color 0.15s;
+    }
+    input:focus, select:focus { border-color: #1f6feb; }
+    input::placeholder { color: #484f58; }
+
+    .form-actions { margin-top: 1rem; display: flex; gap: 0.75rem; align-items: center; }
+    .btn {
+      background: #1f6feb; color: #fff; border: none; border-radius: 6px;
+      padding: 0.5rem 1.25rem; font-size: 0.875rem; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #388bfd; }
+    .btn.secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+    .btn.secondary:hover { background: #30363d; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .stat-bar { display: flex; gap: 1.5rem; font-size: 0.8rem; color: #8b949e; }
+    .stat-bar strong { color: #f0f6fc; }
+
+    /* Pagination */
+    .pagination { display: flex; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 1rem; }
+    .pagination button { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 0.8rem; }
+    .pagination button:hover { background: #30363d; }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination span { font-size: 0.8rem; color: #8b949e; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; margin-top: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { background: #21262d; color: #8b949e; text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; border-bottom: 1px solid #30363d; white-space: nowrap; }
+    td { padding: 0.45rem 0.75rem; border-bottom: 1px solid #21262d; vertical-align: top; word-break: break-all; max-width: 320px; }
+    tr:hover td { background: #161b22; }
+
+    .badge {
+      display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    }
+    .badge-critical { background: #3d0000; color: #ff7b7b; }
+    .badge-warning  { background: #3d2f00; color: #ffa657; }
+    .badge-info     { background: #0d2535; color: #79c0ff; }
+
+    .badge-auth     { background: #1a2c1a; color: #56d364; }
+    .badge-réseau   { background: #1a2040; color: #79c0ff; }
+    .badge-système  { background: #2d1a40; color: #d2a8ff; }
+    .badge-application { background: #2a2000; color: #e3b341; }
+
+    /* Timeline */
+    .timeline { padding: 0.5rem 0; }
+    .tl-event {
+      display: grid;
+      grid-template-columns: 180px 90px 110px 100px 1fr;
+      gap: 0.5rem;
+      padding: 0.45rem 0.5rem;
+      border-bottom: 1px solid #21262d;
+      font-size: 0.78rem;
+      align-items: start;
+    }
+    .tl-event:hover { background: #161b22; }
+    .tl-header { color: #8b949e; font-weight: 600; border-bottom: 2px solid #30363d; padding-bottom: 0.4rem; margin-bottom: 0.25rem; }
+    .tl-time { color: #8b949e; font-family: monospace; font-size: 0.75rem; }
+    .tl-msg { color: #c9d1d9; }
+
+    .empty { text-align: center; padding: 3rem; color: #484f58; font-size: 0.9rem; }
+    .error { background: #3d0000; border: 1px solid #ff7b7b44; border-radius: 6px; padding: 0.75rem 1rem; color: #ff7b7b; font-size: 0.85rem; margin-top: 0.75rem; }
+
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #30363d; border-top-color: #1f6feb; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1f6feb" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+  <h1>Smart SIEM</h1>
+  <span>DATA · Semaine 2</span>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="search">Recherche</button>
+    <button class="tab-btn" data-tab="timeline">Timeline</button>
+  </div>
+
+  <!-- ======================== RECHERCHE ======================== -->
+  <div id="tab-search" class="tab-panel active">
+    <div class="card">
+      <h2>Filtres</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>IP source (exacte ou CIDR)</label>
+          <input type="text" id="s-ip" placeholder="ex: 192.168.1.5 ou 10.0.0.0/8" />
+        </div>
+        <div class="form-group">
+          <label>Hôte</label>
+          <input type="text" id="s-host" placeholder="ex: srv-web-01" />
+        </div>
+        <div class="form-group">
+          <label>Type de log</label>
+          <select id="s-type">
+            <option value="">— tous —</option>
+            <option>auth</option>
+            <option>réseau</option>
+            <option>système</option>
+            <option>application</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Sévérité</label>
+          <select id="s-severity">
+            <option value="">— toutes —</option>
+            <option>info</option>
+            <option>warning</option>
+            <option>critical</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date début (ISO 8601)</label>
+          <input type="text" id="s-from" placeholder="ex: 2026-06-14T00:00:00Z" />
+        </div>
+        <div class="form-group">
+          <label>Date fin (ISO 8601)</label>
+          <input type="text" id="s-to" placeholder="ex: 2026-06-21T23:59:59Z" />
+        </div>
+        <div class="form-group">
+          <label>Mot-clé (raw_message)</label>
+          <input type="text" id="s-kw" placeholder="ex: timeout, failed, root" />
+        </div>
+        <div class="form-group">
+          <label>Résultats / page</label>
+          <select id="s-size">
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn" id="s-search-btn">Rechercher</button>
+        <button class="btn secondary" id="s-clear-btn">Effacer</button>
+        <span id="s-status"></span>
+      </div>
+    </div>
+
+    <div class="card" id="s-results-card" style="display:none;">
+      <div class="stat-bar" id="s-stat"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Horodatage</th>
+              <th>IP source</th>
+              <th>Hôte</th>
+              <th>Type</th>
+              <th>Sévérité</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="s-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="s-pagination"></div>
+    </div>
+    <div id="s-error" style="display:none;"></div>
+  </div>
+
+  <!-- ======================== TIMELINE ======================== -->
+  <div id="tab-timeline" class="tab-panel">
+    <div class="card">
+      <h2>Filtres</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>IP source</label>
+          <input type="text" id="t-ip" placeholder="ex: 10.0.0.5" />
+        </div>
+        <div class="form-group">
+          <label>Hôte</label>
+          <input type="text" id="t-host" placeholder="ex: srv-db-01" />
+        </div>
+        <div class="form-group">
+          <label>Date début</label>
+          <input type="text" id="t-from" placeholder="ex: 2026-06-14T00:00:00Z" />
+        </div>
+        <div class="form-group">
+          <label>Date fin</label>
+          <input type="text" id="t-to" placeholder="ex: 2026-06-21T23:59:59Z" />
+        </div>
+        <div class="form-group">
+          <label>Types de log (multi)</label>
+          <select id="t-types" multiple size="4" style="height:auto;">
+            <option>auth</option>
+            <option>réseau</option>
+            <option>système</option>
+            <option>application</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Événements max</label>
+          <select id="t-max">
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500" selected>500</option>
+            <option value="1000">1000</option>
+            <option value="2000">2000</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn" id="t-search-btn">Charger la timeline</button>
+        <button class="btn secondary" id="t-clear-btn">Effacer</button>
+        <span id="t-status"></span>
+      </div>
+    </div>
+
+    <div class="card" id="t-results-card" style="display:none;">
+      <div class="stat-bar" id="t-stat"></div>
+      <div class="tl-event tl-header">
+        <span>Horodatage</span><span>IP source</span><span>Hôte</span><span>Type · Sév.</span><span>Message</span>
+      </div>
+      <div class="timeline" id="t-timeline"></div>
+    </div>
+    <div id="t-error" style="display:none;"></div>
+  </div>
+</main>
+
+<script>
+  /* ─── Onglets ─── */
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn, .tab-panel').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  /* ─── Utilitaires ─── */
+  function badge(cls, value) {
+    const key = (value || '').toLowerCase().replace(/[^a-z]/g, '');
+    return `<span class="badge badge-${key}">${value || '—'}</span>`;
+  }
+
+  function fmtTs(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toISOString().replace('T', ' ').replace('Z', ''); }
+    catch { return ts; }
+  }
+
+  function setStatus(id, html) { document.getElementById(id).innerHTML = html; }
+  function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.innerHTML = `<div class="error">${msg}</div>`;
+    el.style.display = 'block';
+  }
+  function clearError(id) { const el = document.getElementById(id); el.innerHTML = ''; el.style.display = 'none'; }
+
+  /* ─── RECHERCHE ─── */
+  let searchPage = 1;
+  let searchParams = {};
+
+  async function runSearch(page) {
+    searchPage = page;
+    const params = new URLSearchParams();
+    const ip   = document.getElementById('s-ip').value.trim();
+    const host = document.getElementById('s-host').value.trim();
+    const type = document.getElementById('s-type').value;
+    const sev  = document.getElementById('s-severity').value;
+    const from = document.getElementById('s-from').value.trim();
+    const to   = document.getElementById('s-to').value.trim();
+    const kw   = document.getElementById('s-kw').value.trim();
+    const sz   = document.getElementById('s-size').value;
+
+    if (ip)   params.set('source_ip', ip);
+    if (host) params.set('host', host);
+    if (type) params.set('log_type', type);
+    if (sev)  params.set('severity', sev);
+    if (from) params.set('date_from', from);
+    if (to)   params.set('date_to', to);
+    if (kw)   params.set('keyword', kw);
+    params.set('page', page);
+    params.set('page_size', sz);
+
+    searchParams = { ip, host, type, sev, from, to, kw, sz };
+
+    setStatus('s-status', '<span class="spinner"></span>');
+    clearError('s-error');
+    document.getElementById('s-search-btn').disabled = true;
+
+    try {
+      const res = await fetch('/api/search?' + params.toString());
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      renderSearchResults(data, parseInt(sz));
+    } catch (e) {
+      showError('s-error', e.message);
+      document.getElementById('s-results-card').style.display = 'none';
+    } finally {
+      setStatus('s-status', '');
+      document.getElementById('s-search-btn').disabled = false;
+    }
+  }
+
+  function renderSearchResults(data, pageSize) {
+    const card = document.getElementById('s-results-card');
+    card.style.display = 'block';
+
+    const total = data.total;
+    const page  = data.page;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+
+    document.getElementById('s-stat').innerHTML =
+      `<span><strong>${total.toLocaleString()}</strong> résultats</span>` +
+      `<span>Page <strong>${page}</strong> / ${pages}</span>` +
+      `<span>Triés par horodatage ↓</span>`;
+
+    const tbody = document.getElementById('s-tbody');
+    if (!data.results.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Aucun résultat</td></tr>';
+    } else {
+      tbody.innerHTML = data.results.map(r => `
+        <tr>
+          <td class="tl-time">${fmtTs(r.timestamp)}</td>
+          <td>${r.source_ip || '—'}</td>
+          <td>${r.host || '—'}</td>
+          <td>${badge('type', r.log_type)}</td>
+          <td>${badge('sev', r.severity)}</td>
+          <td style="color:#c9d1d9;font-size:0.78rem;">${r.raw_message || '—'}</td>
+        </tr>`).join('');
+    }
+
+    /* Pagination */
+    const pag = document.getElementById('s-pagination');
+    pag.innerHTML = '';
+    if (pages > 1) {
+      const prev = document.createElement('button');
+      prev.textContent = '← Précédent';
+      prev.disabled = page <= 1;
+      prev.onclick = () => runSearch(page - 1);
+      pag.appendChild(prev);
+
+      const info = document.createElement('span');
+      info.textContent = `${page} / ${pages}`;
+      pag.appendChild(info);
+
+      const next = document.createElement('button');
+      next.textContent = 'Suivant →';
+      next.disabled = page >= pages;
+      next.onclick = () => runSearch(page + 1);
+      pag.appendChild(next);
+    }
+  }
+
+  document.getElementById('s-search-btn').addEventListener('click', () => runSearch(1));
+  document.getElementById('s-clear-btn').addEventListener('click', () => {
+    ['s-ip','s-host','s-from','s-to','s-kw'].forEach(id => document.getElementById(id).value = '');
+    ['s-type','s-severity'].forEach(id => document.getElementById(id).selectedIndex = 0);
+    document.getElementById('s-results-card').style.display = 'none';
+    clearError('s-error');
+  });
+  document.querySelectorAll('#tab-search input').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(1); });
+  });
+
+  /* ─── TIMELINE ─── */
+  async function runTimeline() {
+    const params = new URLSearchParams();
+    const ip   = document.getElementById('t-ip').value.trim();
+    const host = document.getElementById('t-host').value.trim();
+    const from = document.getElementById('t-from').value.trim();
+    const to   = document.getElementById('t-to').value.trim();
+    const max  = document.getElementById('t-max').value;
+    const types = Array.from(document.getElementById('t-types').selectedOptions).map(o => o.value);
+
+    if (ip)   params.set('source_ip', ip);
+    if (host) params.set('host', host);
+    if (from) params.set('date_from', from);
+    if (to)   params.set('date_to', to);
+    types.forEach(t => params.append('log_types', t));
+    params.set('max_events', max);
+
+    setStatus('t-status', '<span class="spinner"></span>');
+    clearError('t-error');
+    document.getElementById('t-search-btn').disabled = true;
+
+    try {
+      const res = await fetch('/api/timeline?' + params.toString());
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      renderTimeline(data, parseInt(max));
+    } catch (e) {
+      showError('t-error', e.message);
+      document.getElementById('t-results-card').style.display = 'none';
+    } finally {
+      setStatus('t-status', '');
+      document.getElementById('t-search-btn').disabled = false;
+    }
+  }
+
+  function renderTimeline(data, max) {
+    const card = document.getElementById('t-results-card');
+    card.style.display = 'block';
+
+    const shown = data.events.length;
+    document.getElementById('t-stat').innerHTML =
+      `<span><strong>${data.total.toLocaleString()}</strong> correspondances totales</span>` +
+      `<span><strong>${shown}</strong> affichés (max ${max})</span>` +
+      `<span>Ordre chronologique ↑</span>`;
+
+    const tl = document.getElementById('t-timeline');
+    if (!data.events.length) {
+      tl.innerHTML = '<div class="empty">Aucun événement trouvé</div>';
+      return;
+    }
+    tl.innerHTML = data.events.map(ev => `
+      <div class="tl-event">
+        <span class="tl-time">${fmtTs(ev.timestamp)}</span>
+        <span>${ev.source_ip || '—'}</span>
+        <span>${ev.host || '—'}</span>
+        <span>${badge('type', ev.log_type)}</span>
+        <span class="tl-msg">${ev.raw_message || '—'}</span>
+      </div>`).join('');
+  }
+
+  document.getElementById('t-search-btn').addEventListener('click', runTimeline);
+  document.getElementById('t-clear-btn').addEventListener('click', () => {
+    ['t-ip','t-host','t-from','t-to'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('t-types').selectedIndex = -1;
+    document.getElementById('t-results-card').style.display = 'none';
+    clearError('t-error');
+  });
+  document.querySelectorAll('#tab-timeline input').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') runTimeline(); });
+  });
+</script>
+</body>
+</html>

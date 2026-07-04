@@ -17,6 +17,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from elasticsearch import AsyncElasticsearch
 
 from app.core.config import settings
+from app.db.elasticsearch_client import get_es_client
+
 from app.modules.correlation.rules.base import CorrelationAlert, LogWindow
 from app.modules.correlation.rules.registry import get_active_rules
 from app.modules.correlation.lockout_service import lock_entity
@@ -52,7 +54,7 @@ async def _fetch_recent_logs(
         )
     except Exception as exc:
         print(f"[Corrélation] Impossible de récupérer les logs depuis ES: {exc}")
-        return LogWindow(logs=[], cindow_start=window_startt, window_end=now)
+        return LogWindow(logs=[], window_start=window_start, window_end=now)
 
     logs = [{"id": hit["_id"], **hit["_source"]} for hit in response["hits"]["hits"]]
 
