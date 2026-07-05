@@ -1,0 +1,49 @@
+@startuml uc-00-vue-ensemble
+!theme plain
+skinparam nodesep 60
+skinparam ranksep 50
+title Smart SIEM — Vue d'ensemble des acteurs et domaines fonctionnels (base SQLite)
+left to right direction
+
+actor "Lecteur" as Reader
+actor "Analyste" as Analyst
+actor "Administrateur" as Admin
+actor "Moteur de\ncorrélation" as Engine
+actor "Moteur SOAR" as SOAR
+actor "Moteur UEBA" as UEBA
+
+Analyst --|> Reader
+Admin --|> Analyst
+
+rectangle "Smart SIEM — base SQLite" {
+  usecase "Comptes & accès\n(users)" as D1
+  usecase "Alertes\n(alerts)" as D2
+  usecase "Règles de corrélation\n(correlation_rules)" as D3
+  usecase "SOAR\n(playbook_executions)" as D4
+  usecase "Investigation\n(investigation_flags)" as D5
+  usecase "UEBA\n(ueba_risk_scores /\nueba_anomalies)" as D6
+  usecase "Conformité\n(log_batches)" as D7
+  usecase "Audit\n(audit_logs)" as D8
+}
+
+Admin -- D1
+Reader -- D2
+Analyst -- D2
+Analyst -- D3
+Analyst -- D4
+Analyst -- D5
+Analyst -- D6
+Analyst -- D7
+Reader -- D8
+
+Engine -- D2
+Engine -- D3
+SOAR -- D4
+UEBA -- D6
+
+D2 ..> D8 : <<include>>
+D1 ..> D8 : <<include>>
+D4 ..> D8 : <<include>>
+D5 ..> D8 : <<include>>
+
+@enduml

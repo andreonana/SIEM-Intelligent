@@ -1,0 +1,32 @@
+@startuml uc-04-soar
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Réponse automatisée SOAR (table playbook_executions)
+
+actor Analyste
+actor "Moteur SOAR" as SoarEngine
+actor "firewall-controller" as FW
+
+rectangle "SOAR" as SoarBoundary {
+  usecase "Exécuter un playbook\n(block_ip / disable_account /\nescalate_admin)" as UC1
+  usecase "Consulter l'historique\nd'exécution" as UC2
+  usecase "Journaliser l'action" as UC3
+  usecase "Bloquer une IP réelle\n(iptables)" as UC4
+}
+
+Analyste -- UC1
+Analyste -- UC2
+UC1 -- SoarEngine
+UC4 -- FW
+
+UC1 ..> UC3 : <<include>>
+UC4 ..> UC1 : <<extend>>\n(playbook = block_ip)
+
+note right of UC1
+  status = success/failure — jamais
+  de succès simulé (ex: si
+  FIREWALL_API_URL absent).
+end note
+
+@enduml

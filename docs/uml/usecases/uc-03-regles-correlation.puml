@@ -1,0 +1,25 @@
+@startuml uc-03-regles-correlation
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Règles de corrélation (table correlation_rules)
+
+actor Administrateur
+actor "Moteur de\ncorrélation" as Engine
+
+rectangle "Règles de corrélation" {
+  usecase "Activer/désactiver\nune règle" as UC1
+  usecase "Évaluer les règles\nsur les logs Elasticsearch" as UC2
+  usecase "Créer une alerte\n(si seuil dépassé)" as UC3
+}
+
+Administrateur -- UC1
+Engine -- UC2
+UC2 ..> UC3 : <<include>>
+
+note bottom of UC1
+  enabled=false exclut la règle
+  du prochain cycle d'évaluation.
+end note
+
+@enduml

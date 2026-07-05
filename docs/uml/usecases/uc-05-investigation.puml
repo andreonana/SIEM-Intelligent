@@ -1,0 +1,25 @@
+@startuml uc-05-investigation
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Investigation (table investigation_flags)
+
+actor Analyste
+
+rectangle "Investigation" {
+  usecase "Marquer une entité\nsuspecte (IP/hôte)" as UC1
+  usecase "Consulter les marquages\nd'une entité" as UC2
+  usecase "Journaliser l'action" as UC3
+}
+
+Analyste -- UC1
+Analyste -- UC2
+UC1 ..> UC3 : <<include>>
+
+note bottom of UC1
+  Pivot typique : depuis l'Explorateur
+  de logs ou la vue Investigation,
+  après consultation de la timeline.
+end note
+
+@enduml

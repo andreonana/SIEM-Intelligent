@@ -1,0 +1,40 @@
+@startuml uc-02-alertes
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Alertes (table alerts)
+
+actor Lecteur
+actor Analyste
+actor "Moteur de\ncorrélation" as Engine
+actor "Moteur SOAR" as SOAR
+
+Analyste --|> Lecteur
+
+rectangle "Alertes" {
+  usecase "Consulter les alertes" as UC1
+  usecase "Créer une alerte" as UC2
+  usecase "Acquitter une alerte" as UC3
+  usecase "Résoudre une alerte" as UC4
+  usecase "Journaliser l'action" as UC5
+  usecase "Déclencher un playbook\nautomatique" as UC6
+}
+
+Lecteur -- UC1
+Analyste -- UC3
+Analyste -- UC4
+Engine -- UC2
+SOAR -- UC6
+
+UC3 ..> UC5 : <<include>>
+UC4 ..> UC5 : <<include>>
+UC2 ..> UC5 : <<include>>
+UC6 ..> UC2 : <<extend>>\n(soar_mode=AUTO)
+
+note bottom of UC2
+  status initial = 'open'
+  dedupe_key évite les doublons
+  sur une fenêtre de 5 min.
+end note
+
+@enduml

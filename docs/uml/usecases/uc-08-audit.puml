@@ -1,0 +1,25 @@
+@startuml uc-08-audit
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Audit (table audit_logs)
+
+actor Lecteur
+actor "Tout acteur système\n(analyste, admin,\nmoteurs automatiques)" as AnySystem
+
+rectangle "Audit" {
+  usecase "Consulter le journal\nd'audit" as UC1
+  usecase "Journaliser une action\n(qui, quoi, quand, résultat)" as UC2
+}
+
+Lecteur -- UC1
+AnySystem -- UC2
+
+note bottom of UC2
+  Alimentée par tous les autres domaines :
+  comptes, alertes, règles, SOAR, investigation.
+  Contient le rôle de l'acteur au moment
+  de l'action (colonne role).
+end note
+
+@enduml

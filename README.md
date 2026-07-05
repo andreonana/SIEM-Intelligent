@@ -173,7 +173,7 @@ npm run test      # Vitest — hook useSearch, LogExplorer, InvestigationView (1
 9. (Optionnel) Brancher une vraie machine (syslog réel) : voir
    [`docs/runbooks/brancher-machine-locale.md`](docs/runbooks/brancher-machine-locale.md)
    et [`docs/runbooks/restreindre-rsyslog.md`](docs/runbooks/restreindre-rsyslog.md)
-   (limiter le transfert à `auth,authpriv,kern` pour éviter le bruit applicatif).
+   (limiter le transfert à `auth,authpriv` pour éviter tout bruit applicatif ou système).
 
 ## Structure du dépôt
 | Dossier | Rôle |
@@ -285,9 +285,11 @@ d'inventer des graphiques ou des KPI.
 - **Bind-mount de fichier unique (`nginx.conf`)** : un éditeur qui remplace le fichier par renommage atomique
   (nouvel inode) casse le bind-mount jusqu'à recréation du conteneur (`--force-recreate`), un simple `reload`
   ou `restart` ne suffit pas.
-- **Règle rsyslog `*.*` déconseillée** : transfère tout le bruit applicatif local (ex. logs de debug d'IDE) et
-  fausse les statistiques (classement IP sources, faux positifs de type "arrêt du service de logs" sur un
-  simple redémarrage de rsyslog). Se limiter à `auth,authpriv,kern.*` pour un usage SIEM pertinent.
+- **Règles rsyslog trop larges déconseillées** : `*.*` transfère tout le bruit applicatif local (ex. logs de
+  debug d'IDE, ~10 000 événements en quelques minutes) et fausse les statistiques (classement IP sources, faux
+  positifs `RULE_005` sur un simple redémarrage de rsyslog). La facility `kern` est **elle aussi déconseillée** :
+  testée en conditions réelles, elle a généré **164 969 logs** de refus AppArmor (`operation="ptrace"`) en
+  quelques heures sur une seule machine — bruit système répétitif sans valeur ici. Se limiter à `auth,authpriv.*`.
 - **`RULE_005`** (détection d'arrêt du service de journalisation) fait un filtrage par mot-clé naïf
   (`"syslog"`, `"auditd"`...) sans distinguer un redémarrage normal d'une désactivation malveillante — connu
   comme générateur de faux positifs, non corrigé à ce jour.

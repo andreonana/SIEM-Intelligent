@@ -1,0 +1,58 @@
+@startuml sequence-sqlite
+!theme plain
+title Smart SIEM — Séquence réelle d'écriture en base SQLite\n(détection brute-force → alerte → SOAR → audit)
+
+actor Analyste
+participant "API FastAPI" as API
+participant "Moteur de\ncorrélation" as Engine
+database "Elasticsearch\n(logs bruts)" as ES
+database "SQLite\nsiem.db" as DB
+participant "Dispatcher SOAR" as SOAR
+participant "firewall-controller" as FW
+
+== 1. Détection (déclenchée manuellement ou par le scheduler) ==
+Analyste -> API : POST /api/correlation/run
+API -> Engine : run_correlation_engine()
+Engine -> ES : search(query brute-force,\nwindow_minutes)
+ES --> Engine : hits (tentatives échouées)
+
+alt seuil dépassé (ex: 5 échecs)
+  Engine -> DB : INSERT INTO alerts\n(rule_id, severity, source_ip,\nstatus='open', dedupe_key, ...)
+  DB --> Engine : alert.id
+
+  == 2. Déclenchement SOAR automatique (soar_mode=AUTO) ==
+  Engine -> SOAR : dispatch_auto(alert)
+  SOAR -> DB : UPDATE alerts\nSET soar_status='executing'\nWHERE id=?
+  SOAR -> FW : POST /block {ip: source_ip}
+  FW --> SOAR : {status: "blocked"}
+  SOAR -> DB : INSERT INTO playbook_executions\n(playbook_id='block_ip', alert_id,\ntriggered_by='system_auto', status='success')
+  SOAR -> DB : UPDATE alerts\nSET soar_status='executed'\nWHERE id=?
+  SOAR -> DB : INSERT INTO audit_logs\n(username='system_auto',\naction='soar_auto_executed', ...)
+end
+
+== 3. Un analyste consulte et traite l'alerte ==
+Analyste -> API : GET /api/alerts?status=open
+API -> DB : SELECT * FROM alerts\nWHERE status='open'\nORDER BY detected_at DESC
+DB --> API : liste d'alertes
+API --> Analyste : JSON
+
+Analyste -> API : POST /api/alerts/{id}/resolve\n{note: "Confirmé, IP bloquée"}
+API -> DB : UPDATE alerts\nSET status='resolved',\nresolved_at=now(),\nresolution_note=?\nWHERE id=?
+API -> DB : INSERT INTO audit_logs\n(username, role, action='alert_resolve',\ntarget=alert_id)
+DB --> API : OK
+API --> Analyste : {"status": "resolved"}
+
+== 4. (Optionnel) Marquage suspect croisé ==
+Analyste -> API : POST /api/investigation/{ip}/flag\n{note: "IP à surveiller"}
+API -> DB : INSERT INTO investigation_flags\n(entity_id, flagged_by, note, flagged_at)
+API -> DB : INSERT INTO audit_logs\n(action='investigation_flag')
+DB --> API : flag.id
+API --> Analyste : {"status": "flagged"}
+
+note over DB
+  Aucune transaction inter-tables : chaque INSERT/UPDATE
+  est validé indépendamment (pas de rollback groupé si
+  une étape échoue après une autre déjà commitée).
+end note
+
+@enduml

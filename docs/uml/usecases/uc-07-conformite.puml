@@ -1,0 +1,26 @@
+@startuml uc-07-conformite
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Conformité et intégrité (table log_batches)
+
+actor Analyste
+actor Lecteur
+
+Analyste --|> Lecteur
+
+rectangle "Conformité" {
+  usecase "Vérifier l'intégrité\nd'un lot de logs" as UC1
+  usecase "Consulter la chaîne\nSHA-256 (batch → parent)" as UC2
+}
+
+Lecteur -- UC1
+Analyste -- UC2
+
+note bottom of UC1
+  Chaque lot référence le hash du
+  lot précédent (parent_sha256) :
+  toute altération casse la chaîne.
+end note
+
+@enduml

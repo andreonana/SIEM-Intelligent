@@ -1,0 +1,154 @@
+@startuml class-diagram-sqlite
+!theme plain
+title Smart SIEM — Diagramme de classes de la base SQLite (siem.db)
+
+' Aucune clé étrangère n'est déclarée dans le schéma réel (voir note en bas) :
+' les relations ci-dessous sont logiques/applicatives, pas des contraintes SQL.
+
+class User {
+  +id: INTEGER <<PK>>
+  username: VARCHAR(64) <<UNIQUE>>
+  hashed_password: VARCHAR(256)
+  role: VARCHAR(32)
+  is_active: BOOLEAN
+  team: VARCHAR(64)
+  service: VARCHAR(64)
+  subsidiary: VARCHAR(64)
+  environment: VARCHAR(32)
+  mfa_enabled: BOOLEAN
+  mfa_secret: TEXT
+  mfa_enabled_at: TEXT
+  mfa_last_used_at: TEXT
+  created_at: DATETIME
+  updated_at: DATETIME
+}
+
+class Alert {
+  +id: INTEGER <<PK>>
+  rule_id: VARCHAR(64)
+  rule_name: VARCHAR(256)
+  severity: VARCHAR(16)
+  description: TEXT
+  status: VARCHAR(32)
+  source_ip: VARCHAR(64)
+  host: VARCHAR(256)
+  related_log_ids: TEXT
+  detected_at: DATETIME
+  mitre_tactic: VARCHAR(128)
+  mitre_technique: VARCHAR(64)
+  assigned_to: VARCHAR(64)
+  acknowledged_by: VARCHAR(64)
+  acknowledged_at: DATETIME
+  resolution_note: TEXT
+  resolved_at: DATETIME
+  dedupe_key: VARCHAR(256)
+  confidence_score: REAL
+  soar_status: TEXT
+}
+
+class CorrelationRule {
+  +id: INTEGER <<PK>>
+  rule_id: VARCHAR(64) <<UNIQUE>>
+  name: VARCHAR(256)
+  description: TEXT
+  rule_type: VARCHAR(32)
+  enabled: BOOLEAN
+  threshold: INTEGER
+  window_minutes: INTEGER
+  severity: VARCHAR(16)
+  mitre_tactic: VARCHAR(128)
+  mitre_technique: VARCHAR(64)
+  soar_action: VARCHAR(64)
+  soar_mode: TEXT
+  confirm_delay_seconds: INTEGER
+  confidence_score: REAL
+  created_at: DATETIME
+  updated_at: DATETIME
+}
+
+class PlaybookExecution {
+  +id: INTEGER <<PK>>
+  playbook_id: VARCHAR(64)
+  alert_id: INTEGER
+  triggered_by: VARCHAR(64)
+  params: TEXT
+  result: TEXT
+  status: VARCHAR(32)
+  soar_mode: TEXT
+  scheduled_at: TEXT
+  executed_at: DATETIME
+}
+
+class AuditLog {
+  +id: INTEGER <<PK>>
+  timestamp: DATETIME
+  username: VARCHAR(64)
+  role: VARCHAR(32)
+  action: VARCHAR(64)
+  target: VARCHAR(256)
+  detail: TEXT
+  ip_address: VARCHAR(64)
+  result: VARCHAR(16)
+}
+
+class InvestigationFlag {
+  +id: INTEGER <<PK>>
+  entity_id: VARCHAR(256)
+  flagged_by: VARCHAR(64)
+  note: TEXT
+  flagged_at: DATETIME
+}
+
+class LogBatch {
+  +id: INTEGER <<PK>>
+  batch_id: TEXT <<UNIQUE>>
+  sha256: TEXT
+  parent_sha256: TEXT
+  log_count: INTEGER
+  source: TEXT
+  payload_preview: TEXT
+  created_at: TEXT
+}
+
+class UebaRiskScore {
+  +id: INTEGER <<PK>>
+  entity_type: VARCHAR(32)
+  entity_id: VARCHAR(256)
+  score: FLOAT
+  risk_level: VARCHAR(16)
+  anomaly_count: INTEGER
+  contributing_types: TEXT
+  justification: TEXT
+  computed_at: DATETIME
+}
+
+class UebaAnomaly {
+  +id: INTEGER <<PK>>
+  entity_type: VARCHAR(32)
+  entity_id: VARCHAR(256)
+  anomaly_type: VARCHAR(64)
+  severity: VARCHAR(16)
+  weight: FLOAT
+  description: TEXT
+  evidence: TEXT
+  detected_at: DATETIME
+  alert_id: INTEGER
+  alerted: BOOLEAN
+}
+
+' --- Relations applicatives (non contraintes en SQL — simples correspondances de valeurs) ---
+CorrelationRule ..> Alert : "déclenche\n(rule_id = alerts.rule_id)"
+Alert "1" <.. "0..*" PlaybookExecution : "exécuté pour\n(alert_id)"
+User ..> Alert : "acquitte/résout\n(acknowledged_by, assigned_to)"
+User ..> AuditLog : "auteur de\n(username, role)"
+User ..> InvestigationFlag : "marque\n(flagged_by)"
+UebaAnomaly ..> Alert : "peut créer\n(alert_id)"
+UebaRiskScore ..> UebaAnomaly : "agrège\n(entity_type + entity_id)"
+
+note bottom of Alert
+  Aucune clé étrangère SQL réelle : toutes les
+  relations ci-dessus sont de simples chaînes de
+  caractères non contraintes par le schéma.
+end note
+
+@enduml

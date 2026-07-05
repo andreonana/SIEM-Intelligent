@@ -1,0 +1,31 @@
+@startuml uc-06-ueba
+!theme plain
+skinparam nodesep 50
+skinparam ranksep 40
+title Cas d'utilisation — Analyse comportementale UEBA (tables ueba_risk_scores / ueba_anomalies)
+
+actor Analyste
+actor "Moteur UEBA" as UebaEngine
+
+rectangle "UEBA" as UebaBoundary {
+  usecase "Lancer une analyse\n(par IP, hôte ou utilisateur)" as UC1
+  usecase "Calculer un score de risque" as UC2
+  usecase "Détecter une anomalie" as UC3
+  usecase "Consulter les scores\nde risque" as UC4
+  usecase "Créer une alerte\n(anomalie critique)" as UC5
+}
+
+Analyste -- UC1
+Analyste -- UC4
+UebaEngine -- UC1
+
+UC1 ..> UC2 : <<include>>
+UC1 ..> UC3 : <<include>>
+UC5 ..> UC3 : <<extend>>\n(sévérité critique)
+
+note bottom of UC1
+  entity_type ∈ {source_ip, host, user}
+  — les trois sont réellement analysables.
+end note
+
+@enduml
