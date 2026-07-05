@@ -1,15 +1,20 @@
-import os, json, time, glob, requests, re
+import os
+import time
+import json 
+import glob
+import requests
+import re
 from datetime import datetime, timezone
 
-# ── Config ───────────────────────────────────────────────────────────────────
-API_URL    = os.environ.get("API_URL",      "http://mock-api:8000/api/logs")
-API_KEY    = os.environ.get("API_KEY",      "dev-key-temporaire")
+# configuration de l'environnement et des variables d'environnement
+API_URL    = os.environ.get("API_URL")
+API_KEY    = os.environ.get("API_KEY")
 BATCH      = int(os.environ.get("BATCH_SIZE",    "50"))
 INTERVAL   = int(os.environ.get("POLL_INTERVAL", "5"))
-OUTPUT_DIR = "/output"
+OUTPUT_DIR = ["/output/windows", "/output/docker"]
 STATE_FILE = "/state/offset.json"
 
-# ── Patterns de détection ────────────────────────────────────────────────────
+# Patterns de détection de logs en foction de la source (linux, windows, cisco, fortinet...)
 
 # Syslog Linux standard : "Jan 15 10:00:01 hostname process[pid]: message"
 RE_SYSLOG = re.compile(
@@ -447,10 +452,11 @@ def send_batch(events: list) -> bool:
     for attempt in range(5):
         try:
             r = requests.post(API_URL, json=payload, headers=headers, timeout=10, verify=False)
+            print(f"[INFO] API {r.status_code} — batch {len(events)} events")
             if r.status_code < 400:
                 return True
             if r.status_code < 500:
-                print(f"[WARN] API 4xx ({r.status_code}) — batch ignoré")
+                print(f"[WARN] API ({r.status_code}) — batch ignoré")
                 return True
             print(f"[WARN] API {r.status_code} — retry {attempt+1}/5")
         except requests.exceptions.RequestException as e:
@@ -476,26 +482,28 @@ def tail_file(path: str, offset: int):
     return events, new_offset
 
 def main():
-    print("[INFO] Forwarder v0.2.0 démarré — support multi-OS/multi-équipement")
+    print("[INFO] Forwarder v0.2.0 démarré — mode dual source (Docker + Windows natif)")
     state = load_state()
     while True:
-        files = sorted(glob.glob(os.path.join(OUTPUT_DIR, "beats-output*")))
-        for path in files:
-            offset = state.get(path, 0)
-            try:
-                current_size = os.path.getsize(path)
-            except FileNotFoundError:
+        for output_dir in OUTPUT_DIR:
+            if not os.path.exists(output_dir):
                 continue
-            if offset > current_size:
-                offset = 0
-            if offset == current_size:
-                continue
-            events, new_offset = tail_file(path, offset)
-            for i in range(0, len(events), BATCH):
-                if send_batch(events[i:i+BATCH]):
-                    state[path] = new_offset
-                    save_state(state)
+            files = sorted(glob.glob(os.path.join(output_dir, "beats-output*")))
+            for path in files:
+                offset = state.get(path, 0)
+                try:
+                    current_size = os.path.getsize(path)
+                except FileNotFoundError:
+                    continue
+                if offset > current_size:
+                    offset = 0
+                if offset == current_size:
+                    continue
+                events, new_offset = tail_file(path, offset)
+                for i in range(0, len(events), BATCH):
+                    if send_batch(events[i:i+BATCH]):
+                        state[path] = new_offset
+                        save_state(state)
         time.sleep(INTERVAL)
-
 if __name__ == "__main__":
     main()
