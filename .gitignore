@@ -58,3 +58,5 @@ uploads/
 # Secrets
 secrets/
 *.secret
+infra/certs/
+.env
