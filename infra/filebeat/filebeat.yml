@@ -1,0 +1,30 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /logs-watched/*.log
+    json.keys_under_root: false
+    encoding: utf-8
+
+output.file:
+  path: /output
+  filename: beats-output
+  rotate_every_kb: 10240
+  number_of_files: 5
+
+logging.level: info
+logging.to_files: false
+# règle le problème de permission sur le fichier de log causé par windows 
+#vu que le container filebeat est lancé en root, il n'a pas les droits d'écriture sur le fichier 
+#de log créé par le forwarder qui est lancé en user non root
+#donc on désactive la permission stricte sur le fichier de log pour que filebeat puisse écrire dedans 
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+strict.perms: false
+
+#yamlssl:
+ # enabled: true
+  #certificate_authorities: ["/etc/filebeat/Agent_API/certs/cert.pem"]
+  #verification_mode: "none"

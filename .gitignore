@@ -24,6 +24,7 @@ build/
 
 # Environnement
 .env
+.env.example
 .env.local
 .env.*.local
 *.env

@@ -1,0 +1,3 @@
+{"timestamp": "2026-07-05T00:01:32.773503+00:00", "action": "block", "ip": "8.8.8.8", "result": "failure", "incident_id": "test-1", "rule_id": null, "reason": "Commande échouée: netsh advfirewall firewall add rule name=AgentAPI_Block_8.8.8.8 dir=in action=block remoteip=8.8.8.8 -- stderr: ", "extra": {}}
+{"timestamp": "2026-07-05T00:43:48.339330+00:00", "action": "block", "ip": "8.8.8.8", "result": "success", "incident_id": "test-1", "rule_id": null, "reason": "test blocage", "extra": {}}
+{"timestamp": "2026-07-05T00:45:29.610274+00:00", "action": "unblock", "ip": "8.8.8.8", "result": "success", "incident_id": "test-1", "rule_id": null, "reason": "fin test", "extra": {}}

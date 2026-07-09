@@ -1,0 +1,30 @@
+services:
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.0
+    user: root
+    command: filebeat -e -strict.perms=false
+    volumes:
+      - ./infra/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./infra/log_test:/logs-watched:ro          
+      - filebeat-output:/output
+      #- ./infra/certs/cert.pem:/etc/filebeat/Agent_API/certs/cert.pem:ro
+    restart: unless-stopped
+
+  forwarder:
+    build: ./infra/forwarder
+    environment:
+      - API_URL=${API_URL}
+      - API_KEY=${API_KEY}
+      - BATCH_SIZE=${BATCH_SIZE}
+      - POLL_INTERVAL=${POLL_INTERVAL}
+    volumes:
+      - filebeat-output:/output/docker:ro
+      - "D:\\projet\\Projet_integrateur\\SMART_SIEM\\SIEM-Intelligent\\infra\\filebeat\\output:/output/windows:ro"
+      - forwarder-state:/state
+    restart: unless-stopped
+    depends_on:
+      - filebeat
+
+volumes:
+  filebeat-output:
+  forwarder-state:
