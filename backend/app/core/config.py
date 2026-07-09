@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     #   Nom de l'index où les logs normalisés sont stockés; et nom exact de l'index où les actions automatiques (
     #    nettoyage automatique de rétention) sont journalisées.
-    es_logs_index_name:         str = "logs-siem"
+    es_logs_index_name:         str = "smart-siem-logs"
     es_audit_index_name:        str = "smart-siem-audit"
 
 
@@ -83,6 +83,25 @@ class Settings(BaseSettings):
     jwt_secret:                 str = "dev-only-change-me"
     jwt_algorithm:              str = "HS256"
     jwt_expiry_minutes:         int = 60
+
+    #   Politique de mots de passe - longueur minimale requise (to verify in user_service)
+    password_min_length:        int = 8
+
+    #   Nombre maximale de tentatives de connexion avant verouillage
+    max_login_attempts:         int = 5
+
+    #   Durée de validié de la session en minutes
+    session_timeout_minutes:    int = 60
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:    Base de données relationnelle (Utilisateurs, audit)
+    #   ----------------------------------------------------------------------------------------
+
+    #   URL SQLAlchemy, async. Exemples:
+    #     PostgreSQL  : postgresql+asyncpg://siem:siem1234@localhost:5432/siem_db
+    #     SQLite demo : sqlite+aiosqlite:///./siem.db   (créé automatiquement)
+    #   Si absent, le backend bascule sur SQLite local (demo/CI uniquement).
+    database_url:               str = "sqlite+aiosqlite:///./siem.db"
 
     #   ----------------------------------------------------------------------------------------
     #       SECTION:    Table tag -> severity
@@ -225,6 +244,31 @@ class Settings(BaseSettings):
     #   Activation et désactivation des règles de corrélation par l'admin
     es_rule_configs_index_name:             str = "smart-siem-rule-configs"
 
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:    Notifications (Slack, Teams, Email)
+    #   ----------------------------------------------------------------------------------------
+
+    slack_webhook_url:                      str |   None = None
+    teams_webhok_url:                       str |   None = None
+    smtp_host:                              str |   None = None
+    smtp_port:                              int =   587
+    smtp_user:                              str |   None = None
+    smtp_password:                          str |   None = None
+    alert_email_to:                         str |   None = None
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:    MFA TOTP (RFC6238)
+    #   ----------------------------------------------------------------------------------------
+
+    #   Nom de l'émetteur affiché dasn les apps authenticator (Google Authenticator, Authy...)
+    mfa_issuer_name:                        str = "Smart SIEM"
+
+    #   Durée d'une intervalle TOTP en secondes (RFC6238 recommande 30 s)
+    mfa_time_stp:                           int = 30
+
+    #   Fenêtre de tolérance en nombhre d'intervalles de chaque côté de l'heure courante.
+    mfa_allowed_drift:                      int = 1
+
     #   ---------------------------------------------------------------------------------------
     #       SECTION:    Horaires de travail et détection hors-horaire
     #   ---------------------------------------------------------------------------------------
@@ -283,6 +327,44 @@ class Settings(BaseSettings):
 
     #   Nombre total de jours au-delà duquel les logs sont supprimés automatiquement.
     retention_days:                             int = 30
+
+    #   Mettre à false pour désactiver le scheduler APScheduler (tests / CI)
+    enable_retention_scheduler:                 bool = True
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:   Rapports PDF
+    #   ----------------------------------------------------------------------------------------
+
+    #   Fenêtre par défaut du rapport hebdomadaire en jours.
+    report_default_days:                        int = 7
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:   UEBA -   Analyse comportementale
+    #   ----------------------------------------------------------------------------------------
+
+    #   Fenêtre en jours utilisée pour construire la baseline comportementale.
+    ueba_baseline_days:                         int = 30
+
+    #   Fenêtre en minutes pour l'analyse comportementale récente (comparée à la baseline).
+    ueba_analysis_window_minutes:               int = 60
+
+    #   Nombre minimal d'évènements dans la fenêtre de baseline pour qu'elle soit fiable.
+    ueba_min_events_for_baseline:               int = 5
+
+    #   Seuils de score de risque.
+    ueba_risk_medium_threshold:                 int = 20
+    ueba_risk_high_threshold:                   int = 45
+    euba_risk_critical_threshold:               int = 70
+
+    #   ----------------------------------------------------------------------------------------
+    #       SECTION:   SOAR
+    #   ----------------------------------------------------------------------------------------
+
+    #   URL du service firewall réel (voir infra/firewall-controller/) consommé par le playbook SOAR block_ip.
+    #   Contrat HTTP:   POST {url}/block {"ip", "reason"} -> {"status": "blocked"/"failure", ...}. Si absent, block_ip
+    #    échoue explicitement (status=failure) - aucune simulation de blocage n'est effectuée.
+    firewall_api_url:                           str |   None = None
+    
 
     #   model_config configure comment Pydantic Settings lit les variables d'environnement.
     #       - env_file=".env" indique où se trouve le fichier .env partagé à la racine du projet backend.

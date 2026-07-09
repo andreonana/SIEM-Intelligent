@@ -83,7 +83,9 @@ def require_role(minimum_role: str | list[str]):
                     detail=(f"Access denied. Requires one of {minimum_role}. "
                     f"Your role: '{user_role}'."),
                 )
-            #   *** Mode hiérarchique original inchangé.
+            return user
+
+        #   *** Mode hiérarchique original inchangé.
 
         user_level =        ROLE_LEVELS.get(user["role"], 0)
         required_level =    ROLE_LEVELS.get(minimum_role, 99)
